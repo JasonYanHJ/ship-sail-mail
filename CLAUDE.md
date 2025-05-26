@@ -60,8 +60,6 @@ CREATE TABLE emails (
     content_html LONGTEXT,
     date_sent DATETIME,
     date_received DATETIME DEFAULT CURRENT_TIMESTAMP,
-    has_attachments BOOLEAN DEFAULT FALSE,
-    attachment_count INT DEFAULT 0,
     raw_headers LONGTEXT,  -- 原始邮件头
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -136,19 +134,60 @@ src/
 
 ## 开发计划
 
-### 阶段1: 项目基础搭建
-1. **初始化项目结构**
-   - 创建目录结构
-   - 配置requirements.txt
-   - 设置.env模板
+### 阶段1: 项目基础搭建 ✅ 已完成
+1. **初始化项目结构** ✅
+   - ✅ 创建目录结构：已按照设计创建完整的src目录结构
+   - ✅ 配置requirements.txt：包含所有必需的Python依赖
+   - ✅ 设置.env模板：定义了所有环境变量配置项
 
-2. **配置管理**
-   - 实现settings.py，读取环境变量
-   - 配置日志系统
+2. **配置管理** ✅
+   - ✅ 实现settings.py：使用pydantic-settings读取环境变量
+   - ✅ 配置日志系统：实现了统一的日志管理工具
 
-3. **数据库连接**
-   - 实现数据库连接池
-   - 创建数据模型类
+3. **数据库连接** ✅
+   - ✅ 实现数据库连接池：基于aiomysql的异步连接池
+   - ✅ 创建数据模型类：完整的Email、Attachment、Forward模型
+
+#### 阶段1完成的技术实现细节：
+
+**项目结构**
+```
+src/
+├── main.py                 # FastAPI应用入口
+├── config/
+│   └── settings.py         # 基于pydantic-settings的配置管理
+├── models/
+│   ├── __init__.py
+│   ├── database.py         # 异步数据库连接池 + 同步表创建
+│   └── email_models.py     # Pydantic数据模型
+├── services/               # 业务服务层
+├── api/                    # API路由层
+├── tasks/                  # 定时任务
+└── utils/
+    ├── __init__.py
+    └── logger.py           # 统一日志配置
+```
+
+**关键技术选型**
+- **配置管理**: pydantic-settings + python-dotenv
+- **数据库**: aiomysql异步连接池 + pymysql同步操作
+- **数据模型**: Pydantic BaseModel，支持JSON序列化
+- **日志**: Python标准logging + 自定义格式化
+
+**数据库设计优化**
+- 移除了冗余的`has_attachments`和`attachment_count`字段
+- 采用关联查询动态获取附件信息
+- 保证数据一致性，降低维护成本
+
+**连接池配置**
+- 异步连接池：minsize=1, maxsize=10
+- 事务支持：自动回滚机制
+- 字符集：utf8mb4，支持完整Unicode
+
+**下一阶段准备**
+- 数据库表已定义，可直接创建
+- 配置系统已就绪，支持环境变量读取
+- 日志系统已配置，便于调试和监控
 
 ### 阶段2: 邮件读取功能
 1. **IMAP连接服务**
