@@ -50,3 +50,10 @@ def setup_logger(
 
 # 创建默认logger实例
 logger = setup_logger()
+
+
+def get_logger(name: str = None) -> logging.Logger:
+    """获取指定名称的logger"""
+    if name:
+        return setup_logger(name)
+    return logger
