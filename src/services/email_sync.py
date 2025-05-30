@@ -235,7 +235,8 @@ class EmailSyncService:
 
                 # 保存附件文件
                 file_info = await file_storage.save_attachment(
-                    email_uid, filename, content
+                    email_uid, filename, content, parsed_email.get(
+                        'date_received')
                 )
 
                 # 创建附件模型
