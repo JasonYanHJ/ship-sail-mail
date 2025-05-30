@@ -84,7 +84,7 @@ class EmailReader:
             logger.error(f"选择文件夹 '{folder_name}' 失败: {e}")
             raise
 
-    def search_emails(self, criteria: List[str] = None, limit: int = 10) -> List[int]:
+    def search_emails(self, criteria: List[str] = None, limit: int = None) -> List[int]:
         """搜索邮件"""
         if not self.connected or not self.client:
             raise Exception("未连接到IMAP服务器")
@@ -217,6 +217,16 @@ class EmailReader:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """上下文管理器出口"""
+        self.disconnect()
+    
+    async def __aenter__(self):
+        """异步上下文管理器入口"""
+        if not self.connect():
+            raise Exception("无法连接到IMAP服务器")
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """异步上下文管理器出口"""
         self.disconnect()
 
 
