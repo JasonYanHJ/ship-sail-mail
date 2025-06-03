@@ -79,6 +79,7 @@ CREATE TABLE attachments (
     file_path VARCHAR(500),
     file_size BIGINT,
     content_type VARCHAR(100),
+    content_disposition_type VARCHAR(50),  -- Content-Disposition类型(如attachment/inline/form-data等)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (email_id) REFERENCES emails(id) ON DELETE CASCADE,
     INDEX idx_email_id (email_id)

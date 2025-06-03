@@ -128,7 +128,8 @@ class EmailParser:
                                 'filename': decoded_filename,
                                 'content_type': content_type,
                                 'size': len(part.get_payload(decode=True) or b''),
-                                'content': part.get_payload(decode=True)
+                                'content': part.get_payload(decode=True),
+                                'content_disposition_type': EmailParser._extract_disposition_type(content_disposition)
                             }
                             attachments.append(attachment_info)
             else:
@@ -261,7 +262,8 @@ class EmailParser:
                             attachment_info = {
                                 'filename': decoded_filename,
                                 'content_type': part.get_content_type(),
-                                'size': len(part.get_payload(decode=True) or b'')
+                                'size': len(part.get_payload(decode=True) or b''),
+                                'content_disposition_type': EmailParser._extract_disposition_type(part.get('Content-Disposition', ''))
                             }
                             attachments.append(attachment_info)
 
@@ -292,6 +294,35 @@ class EmailParser:
         except Exception as e:
             logger.error(f"提取附件内容失败: {e}")
             return None
+
+    @staticmethod
+    def _extract_disposition_type(content_disposition: str) -> str:
+        """
+        从Content-Disposition头中提取disposition类型
+        
+        Args:
+            content_disposition: Content-Disposition头的完整值
+            
+        Returns:
+            disposition类型（去除参数部分），如果解析失败返回空字符串
+        """
+        if not content_disposition:
+            return ''
+        
+        try:
+            # Content-Disposition格式为: 
+            # "attachment; filename=example.txt"
+            # "inline; filename=image.jpg"
+            # "form-data; name=file"
+            # 我们只需要第一部分的disposition类型，去除后续的参数
+            disposition_type = content_disposition.split(';')[0].strip().lower()
+            
+            # 返回disposition类型（保留所有可能的类型值）
+            return disposition_type
+                
+        except Exception as e:
+            logger.warning(f"解析Content-Disposition类型失败: {e}, 原始值: {content_disposition}")
+            return ''
 
 
 # 全局邮件解析器实例
