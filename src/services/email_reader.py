@@ -4,7 +4,6 @@ from imapclient import IMAPClient
 from email.message import Message
 from ..config.settings import settings
 from ..utils.logger import logger
-from ..utils.email_parser import email_parser
 
 
 class EmailReader:
@@ -133,55 +132,6 @@ class EmailReader:
             logger.error(f"获取邮件 {message_id} 失败: {e}")
             raise
 
-    def fetch_parsed_email(self, message_id: int) -> Dict:
-        """获取解析后的邮件数据"""
-        try:
-            # 获取原始邮件数据
-            metadata, raw_email = self.fetch_raw_email(message_id)
-
-            # 使用邮件解析器解析邮件
-            parsed_data = email_parser.parse_full_email(raw_email)
-
-            # 合并元数据和解析数据
-            return {
-                **metadata,
-                **parsed_data,
-                'raw_email': raw_email
-            }
-
-        except Exception as e:
-            logger.error(f"解析邮件 {message_id} 失败: {e}")
-            raise
-
-    def read_latest_emails(self, folder_name: str = "INBOX", limit: int = 10) -> List[Dict]:
-        """读取最新邮件"""
-        emails = []
-
-        try:
-            # 选择文件夹
-            self.select_folder(folder_name)
-
-            # 搜索邮件
-            message_ids = self.search_emails(limit=limit)
-
-            for msg_id in message_ids:
-                try:
-                    # 获取并解析邮件
-                    email_data = self.fetch_parsed_email(msg_id)
-                    emails.append(email_data)
-                    logger.debug(f"处理邮件 {msg_id} 完成")
-
-                except Exception as e:
-                    logger.error(f"处理邮件 {msg_id} 时出错: {e}")
-                    continue
-
-            logger.info(f"成功读取 {len(emails)} 封邮件")
-            return emails
-
-        except Exception as e:
-            logger.error(f"读取邮件失败: {e}")
-            raise
-
     def get_email_flags(self, message_id: int) -> List:
         """获取邮件标志"""
         if not self.connected or not self.client:
@@ -218,13 +168,13 @@ class EmailReader:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """上下文管理器出口"""
         self.disconnect()
-    
+
     async def __aenter__(self):
         """异步上下文管理器入口"""
         if not self.connect():
             raise Exception("无法连接到IMAP服务器")
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器出口"""
         self.disconnect()
