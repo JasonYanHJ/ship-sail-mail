@@ -16,12 +16,12 @@ async def lifespan(app: FastAPI):
     # 确保附件目录存在
     settings.ensure_attachment_dir()
 
-    # 创建数据库表
+    # 检查数据库表
     try:
-        sync_db_manager.create_tables()
+        sync_db_manager.check_tables()
         logger.info("数据库表检查完成")
     except Exception as e:
-        logger.error(f"数据库表创建失败: {e}")
+        logger.error(f"数据库表检查失败: {e}")
         raise
 
     # 创建数据库连接池

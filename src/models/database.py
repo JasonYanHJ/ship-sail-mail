@@ -91,76 +91,33 @@ class SyncDatabaseManager:
             raise
 
     @staticmethod
-    def create_tables():
-        """创建数据库表"""
-        create_emails_table = """
-        CREATE TABLE IF NOT EXISTS emails (
-            id BIGINT AUTO_INCREMENT PRIMARY KEY,
-            message_id VARCHAR(255) UNIQUE NOT NULL COMMENT '邮件唯一标识',
-            subject TEXT COMMENT '邮件主题',
-            sender VARCHAR(255) COMMENT '发送者',
-            recipients TEXT COMMENT '收件人(JSON格式)',
-            cc TEXT COMMENT '抄送人(JSON格式)',
-            bcc TEXT COMMENT '密送人(JSON格式)',
-            content_text TEXT COMMENT '纯文本内容',
-            content_html LONGTEXT COMMENT 'HTML内容',
-            date_sent DATETIME COMMENT '发送时间',
-            date_received DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '接收时间',
-            raw_headers LONGTEXT COMMENT '原始邮件头',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_message_id (message_id),
-            INDEX idx_date_received (date_received),
-            INDEX idx_sender (sender)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        """
-
-        create_attachments_table = """
-        CREATE TABLE IF NOT EXISTS attachments (
-            id BIGINT AUTO_INCREMENT PRIMARY KEY,
-            email_id BIGINT NOT NULL COMMENT '邮件ID',
-            original_filename VARCHAR(255) COMMENT '原始文件名',
-            stored_filename VARCHAR(255) COMMENT '存储文件名',
-            file_path VARCHAR(500) COMMENT '文件路径',
-            file_size BIGINT COMMENT '文件大小',
-            content_type VARCHAR(100) COMMENT '文件类型',
-            content_disposition_type VARCHAR(50) COMMENT 'Content-Disposition类型(如attachment/inline/form-data等)',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (email_id) REFERENCES emails(id) ON DELETE CASCADE,
-            INDEX idx_email_id (email_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        """
-
-        create_email_forwards_table = """
-        CREATE TABLE IF NOT EXISTS email_forwards (
-            id BIGINT AUTO_INCREMENT PRIMARY KEY,
-            email_id BIGINT NOT NULL COMMENT '原始邮件ID',
-            to_addresses TEXT NOT NULL COMMENT '转发收件人(JSON格式)',
-            cc_addresses TEXT COMMENT '转发抄送人(JSON格式)',
-            bcc_addresses TEXT COMMENT '转发密送人(JSON格式)',
-            additional_message TEXT COMMENT '附加消息',
-            forward_status ENUM('pending', 'sent', 'failed') DEFAULT 'pending' COMMENT '转发状态',
-            error_message TEXT COMMENT '错误信息',
-            forwarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '转发时间',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (email_id) REFERENCES emails(id) ON DELETE CASCADE,
-            INDEX idx_email_id (email_id),
-            INDEX idx_forwarded_at (forwarded_at),
-            INDEX idx_forward_status (forward_status)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        """
+    def check_tables():
+        """检查数据库表是否存在"""
+        required_tables = ['emails', 'attachments']
 
         try:
             with SyncDatabaseManager.get_sync_connection() as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(create_emails_table)
-                    cursor.execute(create_attachments_table)
-                    cursor.execute(create_email_forwards_table)
-                    conn.commit()
-                    logger.info("数据库表创建成功")
+                    missing_tables = []
+
+                    for table_name in required_tables:
+                        cursor.execute("SHOW TABLES LIKE %s", (table_name,))
+                        if cursor.fetchone() is None:
+                            missing_tables.append(table_name)
+
+                    if missing_tables:
+                        error_msg = f"数据库表不存在: {', '.join(missing_tables)}"
+                        logger.error(error_msg)
+                        raise RuntimeError(error_msg)
+
+                    logger.info("数据库表检查通过")
+
         except Exception as e:
-            logger.error(f"创建数据库表失败: {e}")
-            raise
+            if isinstance(e, RuntimeError):
+                raise
+            else:
+                logger.error(f"检查数据库表失败: {e}")
+                raise
 
 
 # 全局数据库管理器实例
