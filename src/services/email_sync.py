@@ -105,8 +105,8 @@ class EmailSyncService:
             latest_date = await email_db_service.get_latest_email_date()
 
             if latest_date:
-                # 从最新邮件时间往前推1小时，防止遗漏
-                sync_date = latest_date - timedelta(hours=1)
+                # 从最新邮件时间往前推1分钟，防止遗漏
+                sync_date = latest_date - timedelta(minutes=2)
                 logger.info(f"基于数据库最新邮件时间确定同步起点: {sync_date}")
             else:
                 # 如果数据库为空，从7天前开始
@@ -228,7 +228,8 @@ class EmailSyncService:
                 content = attachment.get('content', b'')
                 content_type = attachment.get(
                     'content_type', 'application/octet-stream')
-                content_disposition_type = attachment.get('content_disposition_type', '')
+                content_disposition_type = attachment.get(
+                    'content_disposition_type', '')
 
                 if not content:
                     logger.warning(f"附件内容为空，跳过: {filename}")
