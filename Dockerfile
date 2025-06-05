@@ -2,6 +2,10 @@
 FROM python:3.9
 
 
+# 设置时区为中国东八区
+ENV TZ=Asia/Shanghai
+
+
 WORKDIR /app
 
 
