@@ -47,13 +47,7 @@ class EmailSyncService:
         try:
             logger.info("开始邮件同步...")
 
-            # 1. 确定同步起始时间
-            if since_date is None:
-                since_date = await self._get_last_sync_date()
-
-            logger.info(f"同步时间范围: 从 {since_date} 开始")
-
-            # 2. 连接邮箱并获取邮件列表
+            # 1. 连接邮箱并获取邮件列表
             async with self.email_reader as reader:
                 # 获取邮件UID列表
                 mail_uids = await self._get_mail_uids(reader, since_date, limit)
@@ -63,7 +57,7 @@ class EmailSyncService:
                     logger.info("没有新邮件需要同步")
                     return self.sync_stats
 
-                # 3. 处理每封邮件
+                # 2. 处理每封邮件
                 for i, uid in enumerate(mail_uids, 1):
                     try:
                         logger.debug(f"处理邮件 {i}/{len(mail_uids)}: UID={uid}")
@@ -78,10 +72,10 @@ class EmailSyncService:
                         self.sync_stats.errors += 1
                         continue
 
-                # 4. 更新同步时间
+                # 3. 更新同步时间
                 self.last_sync_time = sync_start_time
 
-                # 5. 输出最终统计
+                # 4. 输出最终统计
                 duration = datetime.now() - sync_start_time
                 logger.info(f"邮件同步完成 - 耗时: {duration.total_seconds():.2f}秒")
                 logger.info(f"统计: 总计{self.sync_stats.total_processed}封, "
@@ -98,41 +92,22 @@ class EmailSyncService:
         finally:
             self.is_syncing = False
 
-    async def _get_last_sync_date(self) -> datetime:
-        """获取上次同步的时间点"""
-        try:
-            # 获取数据库中最新邮件的接收时间
-            latest_date = await email_db_service.get_latest_email_date()
-
-            if latest_date:
-                # 从最新邮件时间往前推1分钟，防止遗漏
-                sync_date = latest_date - timedelta(minutes=2)
-                logger.info(f"基于数据库最新邮件时间确定同步起点: {sync_date}")
-            else:
-                # 如果数据库为空，从7天前开始
-                sync_date = datetime.now() - timedelta(days=7)
-                logger.info(f"数据库为空，从7天前开始同步: {sync_date}")
-
-            return sync_date
-
-        except Exception as e:
-            logger.error(f"获取上次同步时间失败: {e}")
-            # 默认从1天前开始
-            return datetime.now() - timedelta(days=1)
-
-    async def _get_mail_uids(self, reader: EmailReader, since_date: datetime,
-                             limit: Optional[int]) -> List[int]:
+    async def _get_mail_uids(self, reader: EmailReader, since_date: datetime, limit: Optional[int]) -> List[int]:
         """获取需要处理的邮件UID列表"""
         try:
             # 确保选择了收件箱文件夹
             reader.select_folder('INBOX')
 
-            # 搜索指定日期之后的邮件
-            search_criteria = ['SINCE', since_date.strftime("%d-%b-%Y")]
+            # 构建搜索条件：未读邮件 + 指定日期之后（如果提供）
+            search_criteria = ['UNFLAGGED']
+            if since_date:
+                search_criteria.extend(
+                    ['SINCE', since_date.strftime("%d-%b-%Y")])
+
             logger.debug(f"搜索条件: {search_criteria}")
 
             uids = reader.search_emails(search_criteria)
-            logger.info(f"找到 {len(uids)} 封邮件匹配搜索条件")
+            logger.info(f"找到 {len(uids)} 封匹配条件的邮件")
 
             if limit and len(uids) > limit:
                 uids = uids[:limit]
@@ -187,6 +162,9 @@ class EmailSyncService:
 
             self.sync_stats.new_emails += 1
             self.sync_stats.last_message_id = message_id
+
+            # 7. 标记邮件已处理
+            reader.mark_as_flagged(uid)
 
             logger.debug(f"邮件处理完成: UID={uid}, DB_ID={email_id}, "
                          f"附件数={len(attachment_ids)}")
