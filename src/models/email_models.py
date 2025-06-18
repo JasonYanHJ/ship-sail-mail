@@ -91,7 +91,6 @@ class AttachmentModel(BaseModel):
 
 class EmailForwardRequest(BaseModel):
     """邮件转发请求模型"""
-    email_id: int
     to_addresses: List[str]
     cc_addresses: Optional[List[str]] = None
     bcc_addresses: Optional[List[str]] = None
@@ -105,12 +104,6 @@ class EmailListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
-
-
-class EmailDetailResponse(BaseModel):
-    """邮件详情响应模型"""
-    email: EmailModel
-    attachments: List[AttachmentModel]
 
 
 class EmailForwardModel(BaseModel):
@@ -166,6 +159,10 @@ class EmailDetailResponse(BaseModel):
     email: EmailModel
     attachments: List[AttachmentModel]
     forwards: List[EmailForwardModel]
+
+
+# 为了兼容性创建别名
+EmailForward = EmailForwardModel
 
 
 class EmailSyncStats(BaseModel):

@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any, Tuple
 import aiomysql
 
 from ..models.database import db_manager
-from ..models.email_models import EmailModel, AttachmentModel, EmailSyncStats
+from ..models.email_models import EmailModel, AttachmentModel, EmailSyncStats, EmailForward
 from ..utils.logger import get_logger
 
 logger = get_logger("email_database")
@@ -393,6 +393,132 @@ class EmailDatabaseService:
                         
         except Exception as e:
             logger.error(f"删除邮件失败: {e}")
+            raise
+    
+    async def save_email_forward(self, forward: EmailForward) -> int:
+        """
+        保存邮件转发记录
+        
+        Args:
+            forward: 转发记录模型
+            
+        Returns:
+            转发记录ID
+        """
+        try:
+            async with self.db_manager.get_transaction() as conn:
+                async with conn.cursor() as cursor:
+                    data = forward.to_db_dict()
+                    columns = ', '.join(data.keys())
+                    placeholders = ', '.join(['%s'] * len(data))
+                    
+                    insert_sql = f"""
+                        INSERT INTO email_forwards ({columns}) 
+                        VALUES ({placeholders})
+                    """
+                    
+                    await cursor.execute(insert_sql, list(data.values()))
+                    forward_id = cursor.lastrowid
+                    
+                    logger.info(f"转发记录保存成功: ID={forward_id}")
+                    return forward_id
+                    
+        except Exception as e:
+            logger.error(f"保存转发记录失败: {e}")
+            raise
+    
+    async def update_forward_status(self, forward_id: int, status: str, error_message: Optional[str] = None) -> bool:
+        """
+        更新转发状态
+        
+        Args:
+            forward_id: 转发记录ID
+            status: 转发状态
+            error_message: 错误信息（可选）
+            
+        Returns:
+            更新是否成功
+        """
+        try:
+            async with self.db_manager.get_transaction() as conn:
+                async with conn.cursor() as cursor:
+                    if error_message:
+                        sql = """
+                            UPDATE email_forwards 
+                            SET forward_status = %s, error_message = %s 
+                            WHERE id = %s
+                        """
+                        await cursor.execute(sql, (status, error_message, forward_id))
+                    else:
+                        sql = """
+                            UPDATE email_forwards 
+                            SET forward_status = %s 
+                            WHERE id = %s
+                        """
+                        await cursor.execute(sql, (status, forward_id))
+                    
+                    updated_rows = cursor.rowcount
+                    if updated_rows > 0:
+                        logger.info(f"转发状态更新成功: ID={forward_id}, status={status}")
+                        return True
+                    else:
+                        logger.warning(f"转发记录不存在: ID={forward_id}")
+                        return False
+                        
+        except Exception as e:
+            logger.error(f"更新转发状态失败: {e}")
+            raise
+    
+    async def get_forward_history(self, email_id: int) -> List[Dict[str, Any]]:
+        """
+        获取邮件转发历史
+        
+        Args:
+            email_id: 邮件ID
+            
+        Returns:
+            转发历史列表
+        """
+        try:
+            async with self.db_manager.get_connection() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cursor:
+                    sql = """
+                        SELECT * FROM email_forwards 
+                        WHERE email_id = %s 
+                        ORDER BY forwarded_at DESC
+                    """
+                    await cursor.execute(sql, (email_id,))
+                    results = await cursor.fetchall()
+                    
+                    return [dict(row) for row in results]
+                    
+        except Exception as e:
+            logger.error(f"获取转发历史失败: {e}")
+            raise
+    
+    async def get_forward_by_id(self, forward_id: int) -> Optional[Dict[str, Any]]:
+        """
+        根据ID获取转发记录
+        
+        Args:
+            forward_id: 转发记录ID
+            
+        Returns:
+            转发记录字典，如果不存在返回None
+        """
+        try:
+            async with self.db_manager.get_connection() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cursor:
+                    sql = "SELECT * FROM email_forwards WHERE id = %s"
+                    await cursor.execute(sql, (forward_id,))
+                    result = await cursor.fetchone()
+                    
+                    if result:
+                        return dict(result)
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"获取转发记录失败: {e}")
             raise
 
 

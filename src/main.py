@@ -6,6 +6,7 @@ from .config.settings import settings
 from .models.database import db_manager, sync_db_manager
 from .utils.logger import logger
 from .tasks.scheduler import mail_scheduler
+from .api.email_routes import router as email_router
 
 
 @asynccontextmanager
@@ -65,6 +66,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# 注册路由
+app.include_router(email_router)
 
 
 @app.get("/")
