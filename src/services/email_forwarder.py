@@ -312,6 +312,11 @@ To: {original_to}
                 f'{disposition_type}; filename="{original_filename}"'
             )
 
+            # 设置Content-ID（如果原附件有的话）
+            if hasattr(attachment, 'content_id') and attachment.content_id:
+                attachment_part.add_header(
+                    'Content-Id', f'<{attachment.content_id}>')
+
             msg.attach(attachment_part)
             return True
 

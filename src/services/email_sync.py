@@ -208,6 +208,7 @@ class EmailSyncService:
                     'content_type', 'application/octet-stream')
                 content_disposition_type = attachment.get(
                     'content_disposition_type', '')
+                content_id = attachment.get('content_id')
 
                 if not content:
                     logger.warning(f"附件内容为空，跳过: {filename}")
@@ -227,7 +228,8 @@ class EmailSyncService:
                     file_path=file_info['file_path'],
                     file_size=file_info['file_size'],
                     content_type=content_type,
-                    content_disposition_type=content_disposition_type
+                    content_disposition_type=content_disposition_type,
+                    content_id=content_id
                 )
 
                 attachment_models.append(attachment_model)

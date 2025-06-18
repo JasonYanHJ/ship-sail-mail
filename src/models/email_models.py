@@ -66,6 +66,7 @@ class AttachmentModel(BaseModel):
     file_size: Optional[int] = None
     content_type: Optional[str] = None
     content_disposition_type: Optional[str] = None
+    content_id: Optional[str] = None
     created_at: Optional[datetime] = None
 
     def to_db_dict(self) -> Dict[str, Any]:
@@ -77,7 +78,8 @@ class AttachmentModel(BaseModel):
             'file_path': self.file_path,
             'file_size': self.file_size,
             'content_type': self.content_type,
-            'content_disposition_type': self.content_disposition_type
+            'content_disposition_type': self.content_disposition_type,
+            'content_id': self.content_id
         }
         if self.id:
             data['id'] = self.id

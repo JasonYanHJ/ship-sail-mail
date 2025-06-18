@@ -80,9 +80,11 @@ CREATE TABLE attachments (
     file_size BIGINT,
     content_type VARCHAR(100),
     content_disposition_type VARCHAR(50),  -- Content-Disposition类型(如attachment/inline/form-data等)
+    content_id VARCHAR(255),  -- Content-ID字段，用于HTML邮件中的嵌入式附件引用
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (email_id) REFERENCES emails(id) ON DELETE CASCADE,
-    INDEX idx_email_id (email_id)
+    INDEX idx_email_id (email_id),
+    INDEX idx_content_id (content_id)
 );
 ```
 

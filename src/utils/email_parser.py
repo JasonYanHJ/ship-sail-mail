@@ -124,12 +124,19 @@ class EmailParser:
                             decoded_filename = EmailParser._decode_filename(
                                 filename)
 
+                            # 提取Content-ID（如果有）
+                            content_id = part.get('Content-Id')
+                            if content_id:
+                                # 移除尖括号（如果存在）
+                                content_id = content_id.strip('<>')
+
                             attachment_info = {
                                 'filename': decoded_filename,
                                 'content_type': content_type,
                                 'size': len(part.get_payload(decode=True) or b''),
                                 'content': part.get_payload(decode=True),
-                                'content_disposition_type': EmailParser._extract_disposition_type(content_disposition)
+                                'content_disposition_type': EmailParser._extract_disposition_type(content_disposition),
+                                'content_id': content_id
                             }
                             attachments.append(attachment_info)
             else:
@@ -299,29 +306,31 @@ class EmailParser:
     def _extract_disposition_type(content_disposition: str) -> str:
         """
         从Content-Disposition头中提取disposition类型
-        
+
         Args:
             content_disposition: Content-Disposition头的完整值
-            
+
         Returns:
             disposition类型（去除参数部分），如果解析失败返回空字符串
         """
         if not content_disposition:
             return ''
-        
+
         try:
-            # Content-Disposition格式为: 
+            # Content-Disposition格式为:
             # "attachment; filename=example.txt"
             # "inline; filename=image.jpg"
             # "form-data; name=file"
             # 我们只需要第一部分的disposition类型，去除后续的参数
-            disposition_type = content_disposition.split(';')[0].strip().lower()
-            
+            disposition_type = content_disposition.split(';')[
+                0].strip().lower()
+
             # 返回disposition类型（保留所有可能的类型值）
             return disposition_type
-                
+
         except Exception as e:
-            logger.warning(f"解析Content-Disposition类型失败: {e}, 原始值: {content_disposition}")
+            logger.warning(
+                f"解析Content-Disposition类型失败: {e}, 原始值: {content_disposition}")
             return ''
 
 
