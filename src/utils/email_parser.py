@@ -4,6 +4,7 @@ from email.message import Message
 from email import message_from_bytes
 import email.utils
 import email.header
+import re
 from .logger import logger
 
 
@@ -60,11 +61,15 @@ class EmailParser:
                 except Exception as e:
                     logger.warning(f"解析邮件日期失败: {e}")
 
-            # 解析主题 - 处理MIME编码
+            # 解析主题 - 处理MIME编码并清理格式
             subject = EmailParser._decode_header(msg.get('Subject', ''))
+            subject = EmailParser._clean_header_text(subject)
+            
+            # 解析Message-ID并清理格式
+            message_id = EmailParser._clean_header_text(msg.get('Message-ID', ''))
 
             return {
-                'message_id': msg.get('Message-ID', ''),
+                'message_id': message_id,
                 'subject': subject,
                 'sender': sender,
                 'recipients': recipients,
@@ -332,6 +337,39 @@ class EmailParser:
             logger.warning(
                 f"解析Content-Disposition类型失败: {e}, 原始值: {content_disposition}")
             return ''
+
+    @staticmethod
+    def _clean_header_text(text: str) -> str:
+        """
+        清理邮件头文本，去掉多余的空格和回车符
+        
+        Args:
+            text: 原始文本
+            
+        Returns:
+            清理后的文本
+        """
+        if not text:
+            return ''
+        
+        try:
+            # 去掉首尾空格和回车符
+            cleaned_text = text.strip()
+            
+            # 去掉文本中间的回车符和换行符（email库会自动插入这些字符来格式化长行）
+            cleaned_text = cleaned_text.replace('\r\n', ' ').replace('\n', ' ').replace('\r', ' ')
+            
+            # 将多个连续空格替换为单个空格
+            cleaned_text = re.sub(r'\s+', ' ', cleaned_text)
+            
+            # 再次去掉首尾空格
+            cleaned_text = cleaned_text.strip()
+            
+            return cleaned_text
+            
+        except Exception as e:
+            logger.warning(f"清理邮件头文本失败: {e}, 原始文本: {text}")
+            return text.strip() if text else ''
 
 
 # 全局邮件解析器实例
