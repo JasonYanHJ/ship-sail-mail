@@ -7,6 +7,7 @@ from .models.database import db_manager, sync_db_manager
 from .utils.logger import logger
 from .tasks.scheduler import mail_scheduler
 from .api.email_routes import router as email_router
+from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
@@ -65,6 +66,19 @@ app = FastAPI(
     description="基于FastAPI的邮箱操作微服务",
     version="1.0.0",
     lifespan=lifespan
+)
+
+origins = [
+    "http://localhost:5173",
+    "http://192.168.100.246:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # 注册路由
