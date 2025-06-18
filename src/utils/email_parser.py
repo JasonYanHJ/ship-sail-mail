@@ -5,6 +5,7 @@ from email import message_from_bytes
 import email.utils
 import email.header
 import re
+import urllib.parse
 from .logger import logger
 
 
@@ -243,17 +244,55 @@ class EmailParser:
 
     @staticmethod
     def _decode_filename(filename: str) -> str:
-        """解码文件名"""
+        """
+        解码文件名，支持多种编码格式
+        
+        Args:
+            filename: 原始文件名
+            
+        Returns:
+            解码后的文件名
+        """
+        if not filename:
+            return ''
+            
+        original_filename = filename
+        
         try:
-            # 处理 RFC2231 编码的文件名
-            return email.utils.collapse_rfc2231_value(filename)
-        except:
-            # 如果解码失败，尝试MIME解码
+            # 1. 首先检查是否是MIME编码格式 (=?charset?encoding?encoded-text?=)
+            if filename.startswith('=?') and filename.endswith('?='):
+                logger.debug(f"检测到MIME编码文件名: {filename}")
+                decoded = EmailParser._decode_header(filename)
+                if decoded and decoded != filename:
+                    logger.debug(f"MIME解码成功: {filename} -> {decoded}")
+                    return decoded
+            
+            # 2. 尝试RFC2231编码解码 (用于处理非ASCII文件名)
             try:
-                return EmailParser._decode_header(filename)
-            except:
-                # 最后返回原文件名
-                return filename
+                decoded = email.utils.collapse_rfc2231_value(filename)
+                if decoded and decoded != filename:
+                    logger.debug(f"RFC2231解码成功: {filename} -> {decoded}")
+                    return decoded
+            except (ValueError, LookupError) as e:
+                logger.debug(f"RFC2231解码失败: {e}")
+            
+            # 3. 检查是否是URL编码格式 (包含%字符)
+            if '%' in filename:
+                try:
+                    decoded = urllib.parse.unquote(filename)
+                    if decoded and decoded != filename:
+                        logger.debug(f"URL解码成功: {filename} -> {decoded}")
+                        return decoded
+                except Exception as e:
+                    logger.debug(f"URL解码失败: {e}")
+            
+            # 4. 如果都不是，直接返回原文件名
+            logger.debug(f"文件名无需解码: {filename}")
+            return filename
+            
+        except Exception as e:
+            logger.warning(f"文件名解码出错: {e}, 原始文件名: {original_filename}")
+            return original_filename
 
     @staticmethod
     def extract_attachment_info(msg: Message) -> List[Dict]:
