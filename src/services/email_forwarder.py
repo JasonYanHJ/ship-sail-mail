@@ -8,6 +8,7 @@ from email.header import Header
 from email.utils import formataddr
 import json
 import re
+import urllib.parse
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import os
@@ -307,9 +308,12 @@ To: {original_to}
 
             # 设置附件头，保持原有的content-disposition-type
             disposition_type = attachment.content_disposition_type or 'inline'
+            
+            # 对文件名进行RFC2231编码以支持中文文件名
+            encoded_filename = self._encode_filename_rfc2231(original_filename)
             attachment_part.add_header(
                 'Content-Disposition',
-                f'{disposition_type}; filename="{original_filename}"'
+                f'{disposition_type}; {encoded_filename}'
             )
 
             # 设置Content-ID（如果原附件有的话）
@@ -324,6 +328,33 @@ To: {original_to}
             logger.error(
                 f"Error adding attachment {getattr(attachment, 'original_filename', 'unknown')}: {str(e)}")
             return False
+    
+    def _encode_filename_rfc2231(self, filename: str) -> str:
+        """
+        使用RFC2231标准编码文件名以支持中文字符
+        
+        Args:
+            filename: 原始文件名
+            
+        Returns:
+            编码后的filename参数字符串
+        """
+        try:
+            # 检查文件名是否包含非ASCII字符
+            filename.encode('ascii')
+            # 如果是纯ASCII，直接使用普通格式
+            return f'filename="{filename}"'
+        except UnicodeEncodeError:
+            # 包含非ASCII字符，使用RFC2231编码
+            try:
+                # 使用UTF-8编码并URL编码
+                encoded = urllib.parse.quote(filename.encode('utf-8'))
+                # RFC2231格式: filename*=charset'language'encoded-value
+                return f"filename*=utf-8''{encoded}"
+            except Exception as e:
+                logger.warning(f"RFC2231编码文件名失败: {e}, 使用原文件名")
+                # 降级处理：直接使用原文件名（可能出现乱码）
+                return f'filename="{filename}"'
 
     async def _smtp_send(self, msg: MIMEMultipart, recipients: List[str]) -> bool:
         """通过SMTP发送邮件"""
