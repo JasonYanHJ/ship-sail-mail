@@ -1,5 +1,6 @@
 import os
 import asyncio
+import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -29,7 +30,8 @@ class FileStorageService:
     def generate_filename(self, email_id: str, original_filename: str,
                           date_received: Optional[datetime] = None) -> str:
         """
-        生成文件名: YYYYMMDDHHMM_邮件ID_原文件名
+        生成存储文件名: YYYYMMDDHHMM_邮件ID_UUID.扩展名
+        使用UUID避免中文文件名兼容性问题
 
         Args:
             email_id: 邮件ID
@@ -37,46 +39,26 @@ class FileStorageService:
             date_received: 邮件接收时间，默认使用当前时间
 
         Returns:
-            生成的文件名
+            生成的存储文件名
         """
         if date_received is None:
             date_received = datetime.now()
 
         # 格式化时间: YYYYMMDDHHMM
         time_prefix = date_received.strftime("%Y%m%d%H%M")
+        
+        # 生成UUID确保文件名唯一性
+        file_uuid = str(uuid.uuid4())
+        
+        # 提取原始文件扩展名
+        _, ext = os.path.splitext(original_filename)
+        
+        # 生成最终文件名: 时间_邮件ID_UUID.扩展名
+        filename = f"{time_prefix}_{email_id}_{file_uuid}{ext}"
 
-        # 清理原始文件名中的特殊字符
-        safe_filename = self._sanitize_filename(original_filename)
-
-        # 生成最终文件名
-        filename = f"{time_prefix}_{email_id}_{safe_filename}"
-
-        logger.debug(f"生成文件名: {filename}")
+        logger.debug(f"生成存储文件名: {filename} (原始文件名: {original_filename})")
         return filename
 
-    def _sanitize_filename(self, filename: str) -> str:
-        """
-        清理文件名中的不安全字符
-
-        Args:
-            filename: 原始文件名
-
-        Returns:
-            清理后的文件名
-        """
-        # 移除或替换危险字符
-        unsafe_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
-        safe_filename = filename
-
-        for char in unsafe_chars:
-            safe_filename = safe_filename.replace(char, '_')
-
-        # 限制文件名长度
-        if len(safe_filename) > 200:
-            name, ext = os.path.splitext(safe_filename)
-            safe_filename = name[:200-len(ext)] + ext
-
-        return safe_filename
 
     async def save_attachment(self, email_id: str, filename: str, content: bytes,
                               date_received: Optional[datetime] = None) -> Dict[str, Any]:
