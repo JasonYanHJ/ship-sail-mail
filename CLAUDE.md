@@ -1,26 +1,34 @@
-# 邮箱微服务开发计划
+# 邮箱微服务技术文档
 
 ## 项目概述
-基于FastAPI框架实现邮箱相关操作的微服务，支持：
-1. 定期读取网易企业邮箱新邮件，保存到MariaDB并下载附件
-2. 邮件转发功能，保持原始邮件格式
 
-## 技术栈
-- **框架**: FastAPI
+基于 FastAPI 框架实现的邮箱微服务，提供以下核心功能：
+
+1. 定期读取网易企业邮箱新邮件，保存到 MariaDB 并下载附件
+2. 邮件转发功能，保持原始邮件格式
+3. RESTful API 接口，支持邮件查询、转发等操作
+4. 异步任务调度，支持定时同步和手动触发
+
+## 技术架构
+
+### 技术栈
+
+- **应用框架**: FastAPI (异步 Web 框架)
 - **邮箱协议**: IMAP (读取) + SMTP (发送)
-- **邮箱服务**: 网易企业邮箱
-- **数据库**: MariaDB
-- **Python库**: 
-  - fastapi
-  - uvicorn
-  - aiomysql / pymysql
-  - imapclient (IMAP客户端)
-  - smtplib
-  - email (标准库)
-  - python-dotenv
-  - apscheduler (定时任务)
+- **邮箱服务**: 网易企业邮箱 (imap.qiye.163.com / smtp.qiye.163.com)
+- **数据库**: MariaDB (支持完整 Unicode 字符集 utf8mb4)
+- **任务调度**: APScheduler (AsyncIOScheduler)
+- **核心依赖**:
+  - fastapi[standard]==0.115.0 + uvicorn[standard]==0.32.0 (Web 服务)
+  - aiomysql==0.2.0 + PyMySQL\==1.1.0 (异步/同步数据库操作)
+  - imapclient==3.0.1 (IMAP 客户端)
+  - smtplib + email (SMTP 发送和邮件处理，Python 标准库)
+  - pydantic-settings==2.1.0 + python-dotenv\==1.0.0 (配置管理)
+  - APScheduler==3.10.4 (定时任务调度)
+  - pydantic==2.5.0 (数据验证和序列化)
 
 ## 环境变量配置 (.env)
+
 ```
 # 邮箱配置
 EMAIL_USERNAME=your_email@company.com
@@ -42,394 +50,354 @@ ATTACHMENT_PATH=/path/to/attachments
 
 # 系统配置
 MAIL_CHECK_INTERVAL=300  # 秒，检查邮件频率
+
+# 日志配置
+LOG_LEVEL=INFO           # 日志级别
+LOG_FILE=               # 日志文件路径（可选）
+
+# API配置
+API_HOST=0.0.0.0        # API服务绑定主机
+API_PORT=8000           # API服务端口
+DEBUG=false             # 调试模式
 ```
 
 ## 数据库设计
 
+注意：数据表由Laravel主服务创建和管理，本微服务仅进行数据读写操作
+
 ### emails 表
-```sql
-CREATE TABLE emails (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    message_id VARCHAR(255) UNIQUE NOT NULL,  -- 邮件唯一标识，用于去重
-    subject TEXT,
-    sender VARCHAR(255),
-    recipients TEXT,  -- JSON格式存储多个收件人
-    cc TEXT,          -- JSON格式存储抄送人
-    bcc TEXT,         -- JSON格式存储密送人
-    content_text TEXT,
-    content_html LONGTEXT,
-    date_sent DATETIME,
-    date_received DATETIME DEFAULT CURRENT_TIMESTAMP,
-    raw_headers LONGTEXT,  -- 原始邮件头
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_message_id (message_id),
-    INDEX idx_date_received (date_received),
-    INDEX idx_sender (sender)
-);
+
+```php
+Schema::create('emails', function (Blueprint $table) {
+    $table->id();
+
+    // 邮件唯一标识，用于去重
+    $table->string('message_id', 255)->unique()->comment('邮件唯一标识，用于去重');
+
+    $table->text('subject')->nullable();
+    $table->string('sender', 255)->nullable();
+
+    // JSON格式存储多个收件人、抄送人、密送人
+    $table->text('recipients')->nullable()->comment('JSON格式存储多个收件人');
+    $table->text('cc')->nullable()->comment('JSON格式存储抄送人');
+    $table->text('bcc')->nullable()->comment('JSON格式存储密送人');
+
+    $table->longText('content_text')->nullable();
+    $table->longText('content_html')->nullable();
+
+    $table->dateTime('date_sent')->nullable();
+    $table->dateTime('date_received')->useCurrent(); // DEFAULT CURRENT_TIMESTAMP
+
+    // 原始邮件头
+    $table->longText('raw_headers')->nullable()->comment('原始邮件头');
+
+    $table->timestamps();
+
+    // 索引
+    $table->index('message_id', 'idx_message_id');
+    $table->index('date_received', 'idx_date_received');
+    $table->index('sender', 'idx_sender');
+});
 ```
 
 ### attachments 表
-```sql
-CREATE TABLE attachments (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    email_id BIGINT,
-    original_filename VARCHAR(255),
-    stored_filename VARCHAR(255),
-    file_path VARCHAR(500),
-    file_size BIGINT,
-    content_type VARCHAR(100),
-    content_disposition_type VARCHAR(50),  -- Content-Disposition类型(如attachment/inline/form-data等)
-    content_id VARCHAR(255),  -- Content-ID字段，用于HTML邮件中的嵌入式附件引用
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (email_id) REFERENCES emails(id) ON DELETE CASCADE,
-    INDEX idx_email_id (email_id),
-    INDEX idx_content_id (content_id)
-);
+
+```php
+Schema::create('attachments', function (Blueprint $table) {
+    $table->id();
+
+    // 外键关联到 emails 表
+    $table->foreignId('email_id')
+        ->constrained('emails')
+        ->onDelete('cascade');
+
+    $table->string('original_filename', 255)->nullable();
+    $table->string('stored_filename', 255)->nullable();
+    $table->string('file_path', 500)->nullable();
+    $table->bigInteger('file_size')->nullable();
+    $table->string('content_type', 100)->nullable();
+
+    // Content-Disposition类型(如attachment/inline/form-data等)
+    $table->string('content_disposition_type', 50)->nullable();
+
+    $table->timestamps();
+
+    // 索引
+    $table->index('email_id', 'idx_email_id');
+});
+
+// 后续补充字段
+Schema::table('attachments', function (Blueprint $table) {
+    $table->string('content_id', 255)->nullable();
+    $table->index('content_id', 'idx_content_id');
+});
 ```
 
 ### email_forwards 表
-```sql
-CREATE TABLE email_forwards (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    email_id BIGINT NOT NULL,
-    to_addresses TEXT NOT NULL,      -- JSON格式存储转发收件人
-    cc_addresses TEXT,               -- JSON格式存储转发抄送人
-    bcc_addresses TEXT,              -- JSON格式存储转发密送人
-    additional_message TEXT,         -- 转发时的附加消息
-    forward_status ENUM('pending', 'sent', 'failed') DEFAULT 'pending',
-    error_message TEXT,              -- 转发失败时的错误信息
-    forwarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (email_id) REFERENCES emails(id) ON DELETE CASCADE,
-    INDEX idx_email_id (email_id),
-    INDEX idx_forwarded_at (forwarded_at),
-    INDEX idx_forward_status (forward_status)
-);
+
+```php
+Schema::create('email_forwards', function (Blueprint $table) {
+    $table->id();
+
+    // 外键关联到 emails 表
+    $table->foreignId('email_id')
+        ->constrained('emails')
+        ->onDelete('cascade');
+
+    $table->text('to_addresses');
+    $table->text('cc_addresses')->nullable();
+    $table->text('bcc_addresses')->nullable();
+    $table->text('additional_message')->nullable();
+    $table->enum('forward_status', ['pending', 'sent', 'failed'])->default('pending');
+    $table->text('error_message')->nullable();
+    $table->timestamp('forwarded_at')->useCurrent();
+    $table->timestamps();
+
+    // 索引
+    $table->index('email_id', 'idx_email_id');
+    $table->index('forwarded_at', 'idx_forwarded_at');
+    $table->index('forward_status', 'idx_forward_status');
+});
 ```
+
+### 系统架构
+
+- **配置层**: 基于 pydantic-settings 的环境变量配置管理
+- **数据库层**: aiomysql 异步连接池 + pymysql 同步操作，支持事务管理
+- **服务层**: 邮件读取、转发、文件存储等核心业务服务
+- **API 层**: FastAPI RESTful 接口 + CORS 中间件支持跨域访问
+- **任务层**: APScheduler 异步任务调度
+- **工具层**: 邮件解析、日志管理等公共组件
 
 ## 项目结构
+
 ```
 src/
-├── main.py                 # FastAPI应用入口
+├── main.py                 # FastAPI应用入口，生命周期管理
 ├── config/
-│   └── settings.py         # 配置管理
+│   └── settings.py         # pydantic-settings配置管理
 ├── models/
 │   ├── __init__.py
-│   ├── database.py         # 数据库连接
-│   └── email_models.py     # 数据模型
+│   ├── database.py         # 异步连接池 + 同步表创建
+│   └── email_models.py     # Pydantic数据模型
 ├── services/
 │   ├── __init__.py
-│   ├── email_reader.py     # 邮件读取服务
-│   ├── email_forwarder.py  # 邮件转发服务
-│   └── file_storage.py     # 文件存储服务
+│   ├── email_reader.py     # IMAP邮件读取服务
+│   ├── email_forwarder.py  # SMTP邮件转发服务
+│   ├── file_storage.py     # 异步文件存储服务
+│   ├── email_database.py   # 邮件数据库操作服务
+│   └── email_sync.py       # 邮件同步服务
 ├── api/
 │   ├── __init__.py
-│   └── email_routes.py     # API路由
+│   └── email_routes.py     # API路由定义
 ├── tasks/
 │   ├── __init__.py
-│   └── scheduler.py        # 定时任务
+│   └── scheduler.py        # 异步任务调度器
 └── utils/
     ├── __init__.py
-    ├── email_parser.py     # 邮件解析工具
-    └── logger.py           # 日志工具
-```
-
-## 开发计划
-
-### 阶段1: 项目基础搭建 ✅ 已完成
-1. **初始化项目结构** ✅
-   - ✅ 创建目录结构：已按照设计创建完整的src目录结构
-   - ✅ 配置requirements.txt：包含所有必需的Python依赖
-   - ✅ 设置.env模板：定义了所有环境变量配置项
-
-2. **配置管理** ✅
-   - ✅ 实现settings.py：使用pydantic-settings读取环境变量
-   - ✅ 配置日志系统：实现了统一的日志管理工具
-
-3. **数据库连接** ✅
-   - ✅ 实现数据库连接池：基于aiomysql的异步连接池
-   - ✅ 创建数据模型类：完整的Email、Attachment、Forward模型
-
-#### 阶段1完成的技术实现细节：
-
-**项目结构**
-```
-src/
-├── main.py                 # FastAPI应用入口
-├── config/
-│   └── settings.py         # 基于pydantic-settings的配置管理
-├── models/
-│   ├── __init__.py
-│   ├── database.py         # 异步数据库连接池 + 同步表创建
-│   └── email_models.py     # Pydantic数据模型
-├── services/               # 业务服务层
-├── api/                    # API路由层
-├── tasks/                  # 定时任务
-└── utils/
-    ├── __init__.py
+    ├── email_parser.py     # MIME邮件解析工具
     └── logger.py           # 统一日志配置
 ```
 
-**关键技术选型**
-- **配置管理**: pydantic-settings + python-dotenv
-- **数据库**: aiomysql异步连接池 + pymysql同步操作
-- **数据模型**: Pydantic BaseModel，支持JSON序列化
-- **日志**: Python标准logging + 自定义格式化
+## 核心技术实现
 
-**数据库设计优化**
-- 移除了冗余的`has_attachments`和`attachment_count`字段
-- 采用关联查询动态获取附件信息
-- 保证数据一致性，降低维护成本
+### 1. 配置管理 (config/settings.py)
 
-**连接池配置**
-- 异步连接池：minsize=1, maxsize=10
-- 事务支持：自动回滚机制
-- 字符集：utf8mb4，支持完整Unicode
+- **技术选型**: pydantic-settings + python-dotenv
+- **特性**: 类型安全的环境变量读取，支持默认值和验证
+- **配置分类**: 邮箱配置、数据库配置、文件存储配置、系统配置
 
-**下一阶段准备**
-- 数据库表已定义，可直接创建
-- 配置系统已就绪，支持环境变量读取
-- 日志系统已配置，便于调试和监控
+### 2. 数据库层 (models/)
 
-### 阶段2: 邮件读取和存储功能 ✅ 已完成
-1. **IMAP连接服务** ✅
-   - ✅ 实现IMAP连接和认证：基于imapclient库的SSL连接
-   - ✅ 邮件列表获取：支持文件夹选择和邮件搜索
-   - ✅ 邮件内容解析：集成EmailParser进行完整解析
+- **连接池**: aiomysql 异步连接池 (minsize=1, maxsize=10)
+- **字符集**: utf8mb4，支持完整 Unicode 字符
+- **事务支持**: 自动回滚机制，确保数据完整性
+- **数据模型**: Pydantic BaseModel，支持 JSON 序列化和验证
+- **表检查**: 启动时检查必需表（emails、attachments）是否存在
 
-2. **邮件解析器** ✅
-   - ✅ 解析邮件头信息：支持MIME编码解码（UTF-8、GB2312等）
-   - ✅ 提取文本和HTML内容：多部分邮件内容解析
-   - ✅ 处理附件：附件信息提取和内容获取
+### 3. 邮件读取服务 (services/email_reader.py)
 
-3. **文件存储服务** ✅
-   - ✅ 实现附件下载和存储：基于FileStorageService的异步文件操作
-   - ✅ 按日期时间(精确到分钟)+邮件ID+UUID命名：YYYYMMDDHHMM_邮件ID_UUID.扩展名
-   - ✅ 文件路径管理：自动创建目录、安全文件名清理、文件信息管理
+- **IMAP 连接**: 基于 imapclient 的 SSL 连接管理
+- **网易兼容**: 支持网易企业邮箱的特殊 ID 命令
+- **上下文管理**: 自动连接管理和资源清理
+- **错误处理**: 完整的异常处理和日志记录
 
-4. **数据库存储** ✅
-   - ✅ 邮件数据入库：基于EmailDatabaseService的异步数据库操作
-   - ✅ 附件信息记录：完整的附件信息存储和关联管理
-   - ✅ 去重机制（基于message_id）：自动去重避免重复存储
+### 4. 邮件解析工具 (utils/email_parser.py)
 
-#### 阶段2完成的技术实现细节：
+- **MIME 解码**: RFC2047 标准，支持中文主题和附件名
+- **多部分邮件**: 文本/HTML/附件的完整解析
+- **字符编码**: UTF-8、GB2312 等多种编码支持
+- **错误容错**: 编码失败时的降级处理机制
 
-**EmailReader (services/email_reader.py)**
-- SSL IMAP连接管理（支持上下文管理器）
-- 邮箱文件夹操作和邮件搜索
-- 原始邮件数据获取和解析邮件数据获取
-- 网易邮箱兼容性处理（ID命令）
-- 完整的错误处理和日志记录
+### 5. 文件存储服务 (services/file_storage.py)
 
-**EmailParser (utils/email_parser.py)**
-- MIME编码邮件头解码（RFC2047）
-- 多部分邮件内容解析（文本/HTML/附件）
-- 字符编码处理（UTF-8、GB2312等）
-- 附件信息提取和内容获取
-- 文件名解码处理
+- **同步文件操作**: 基于 Python 标准库的文件操作 (注意：实际未使用 aiofiles)
+- **智能命名**: YYYYMMDDHHMM\_邮件 ID_UUID.扩展名格式
+- **UUID 策略**: 解决中文文件名在容器环境中的兼容性问题
+- **原始信息**: 数据库中保留完整的原始文件名信息
 
-**关键技术特性**
-- **职责分离**: EmailReader专注IMAP操作，EmailParser专注邮件解析
-- **MIME支持**: 完整的MIME编码解码，支持中文主题和附件名
-- **错误容错**: 字符编码失败时的降级处理
-- **可复用性**: EmailParser可在转发、API等模块中重用
+### 6. 数据库服务 (services/email_database.py)
 
-**FileStorageService (services/file_storage.py)**
-- 异步文件存储操作（保存、读取、删除）
-- 智能文件命名：YYYYMMDDHHMM_邮件ID_UUID.扩展名格式
-- 使用UUID避免文件名兼容性问题：解决中文文件名在容器环境中的问题
-- 保留原始文件名信息：在数据库中记录完整的原始文件名
-- 文件信息管理和旧文件清理功能
-- 完整的错误处理和日志记录
+- **异步操作**: 基于 aiomysql 连接池的高性能数据访问
+- **事务管理**: 邮件和附件的原子性保存
+- **智能去重**: 基于 message_id 的自动去重机制
+- **JSON 处理**: 自动处理 recipients、cc、bcc 等 JSON 字段
 
-**EmailDatabaseService (services/email_database.py)**
-- 异步数据库操作：基于aiomysql连接池的高性能数据库访问
-- 事务性操作：邮件和附件的原子性保存，确保数据完整性
-- 智能去重：基于message_id的自动去重机制
-- 完整的CRUD操作：邮件和附件的增删改查功能
-- 数据统计：邮件统计信息和系统状态监控
-- JSON字段处理：自动处理recipients、cc、bcc等JSON字段序列化
+### 7. 邮件转发服务 (services/email_forwarder.py)
 
-**验证测试**
-- ✅ IMAP连接测试通过
-- ✅ 邮件列表获取正常
-- ✅ 中文主题正确解码
-- ✅ 多部分邮件解析正常
-- ✅ 附件信息提取正确
-- ✅ 文件存储服务全功能测试通过
-- ✅ 数据库连接和操作测试通过
-- ✅ 邮件数据库服务全功能验证
-- ✅ 去重机制和事务性操作测试通过
+- **SMTP 连接**: 基于 smtplib 的 SSL 安全连接
+- **格式保持**: 转发时保持原始邮件头和附件类型
+- **多收件人**: 支持 to、cc、bcc 多种收件人模式
+- **状态追踪**: pending/sent/failed 状态管理
 
-### 阶段3: 定时任务 ✅ 已完成
-1. **任务调度器** ✅
-   - ✅ 配置APScheduler：基于AsyncIOScheduler的异步调度器
-   - ✅ 实现定期邮件检查任务：使用IntervalTrigger按配置间隔执行
-   - ✅ 错误处理和重试机制：任务失败不影响后续执行，支持错过触发的宽限期
+### 8. 任务调度器 (tasks/scheduler.py)
 
-2. **邮件同步逻辑** ✅
-   - ✅ 增量同步（只读取新邮件）：集成EmailSyncService的增量同步功能
-   - ✅ 处理IMAP连接异常：完整的异常处理和日志记录
-   - ✅ 邮件状态跟踪：支持同步状态查询和统计信息
+- **异步调度**: 基于 APScheduler 的 AsyncIOScheduler
+- **并发控制**: max_instances=1 确保单任务执行
+- **错过处理**: misfire_grace_time=60 秒宽限期
+- **事件监听**: 任务执行成功/失败事件处理
 
-#### 阶段3完成的技术实现细节：
+### 9. 邮件同步服务 (services/email_sync.py)
 
-**MailScheduler (tasks/scheduler.py)**
-- 基于APScheduler的异步任务调度器
-- 事件监听器处理任务执行成功/失败事件
-- 智能同步控制：max_instances=1确保同时只有一个同步任务
-- 错过触发处理：misfire_grace_time=60秒宽限期，coalesce=True合并错过的任务
-- 完整的状态监控和手动触发支持
+- **增量同步**: 只处理新邮件，避免重复处理
+- **状态监控**: 实时同步状态和统计信息
+- **错误恢复**: IMAP 连接断开重连机制
 
-**定时任务特性**
-- **自动启动**: 服务启动时自动启动调度器，按MAIL_CHECK_INTERVAL间隔执行
-- **增量同步**: 定时任务执行增量同步，只处理新邮件
-- **并发控制**: 确保同一时间只有一个同步任务运行，避免资源冲突
-- **错误容错**: 单次任务失败不影响后续定时执行
-- **优雅关闭**: 服务关闭时优雅停止调度器
+### 10. 应用生命周期管理 (main.py)
 
-**API接口**
-- `POST /sync/manual` - 手动触发邮件同步（支持limit和since_date查询参数）
-- `GET /sync/status` - 获取邮件同步状态（包含调度器和同步服务状态）
-- `GET /scheduler/status` - 获取调度器任务状态
+- **启动序列**: 目录检查 -> 数据库表检查 -> 连接池初始化 -> 调度器启动
+- **优雅关闭**: 停止调度器 -> 关闭数据库连接池 -> 清理资源
+- **错误处理**: 关键服务启动失败时的降级处理
+- **健康检查**: 提供/health 端点用于服务监控
 
-**集成到主服务**
-- FastAPI服务生命周期管理：启动时启动调度器，关闭时停止调度器
-- 完整的错误处理：调度器启动失败不阻止服务启动
-- 日志监控：详细的调度器状态和任务执行日志
-
-**验证测试**
-- ✅ 调度器启动和停止功能测试
-- ✅ 定时任务执行和日志记录验证
-- ✅ 手动同步API接口测试
-- ✅ 状态查询API功能验证
-
-### 阶段4: 邮件转发功能 ✅ 已完成
-1. **SMTP服务** ✅
-   - ✅ 网易SMTP连接配置：基于smtplib的SSL连接，支持网易企业邮箱
-   - ✅ 邮件发送功能：完整的SMTP认证和邮件发送机制
-
-2. **邮件转发器** ✅
-   - ✅ 保持原始邮件头信息：转发时保持完整的邮件头格式
-   - ✅ 处理附件转发：支持附件读取和转发，保持原有content-disposition-type
-   - ✅ 支持多收件人：支持to、cc、bcc多种收件人类型
-
-3. **转发API** ✅
-   - ✅ REST API接口设计：POST /emails/{email_id}/forward接口
-   - ✅ 请求参数验证：完整的参数校验和错误处理
-   - ✅ 异步邮件发送：异步处理转发操作，提升性能
-
-#### 阶段4完成的技术实现细节：
-
-**EmailForwarder (services/email_forwarder.py)**
-- 基于网易企业邮箱SMTP服务的邮件转发功能
-- 完整的转发记录管理：保存转发历史到email_forwards表
-- 智能邮件格式处理：支持HTML和纯文本邮件转发
-- 附件转发支持：读取原始附件并添加到转发邮件中
-- 保持原始content-disposition-type：inline/attachment等类型保持不变
-- 转发状态追踪：pending/sent/failed状态管理
-
-**SMTP发送特性**
-- **SSL连接**: 使用SMTP_SSL确保连接安全
-- **认证机制**: 支持用户名密码认证
-- **多收件人**: 支持to、cc、bcc多种收件人模式
-- **错误处理**: 完整的SMTP异常处理和重试机制
-- **编码支持**: 正确处理中文主题和内容编码
-
-**转发邮件格式**
-- **主题处理**: 自动添加"Fwd:"前缀（如果不存在）
-- **转发头部**: 标准的"---------- Forwarded message ----------"格式
-- **原始信息**: 保留原始发送者、日期、主题、收件人信息
-- **内容格式**: 支持HTML和纯文本两种格式
-- **附加消息**: 支持在转发时添加自定义消息
-
-**数据库集成**
-- 扩展EmailDatabaseService支持转发记录操作
-- save_email_forward: 保存转发记录
-- update_forward_status: 更新转发状态
-- get_forward_history: 获取转发历史
-- get_forward_by_id: 获取转发记录详情
-
-**API接口**
-- `POST /emails/{email_id}/forward` - 转发邮件接口
-- 请求体格式：
-  ```json
-  {
-    "to_addresses": ["recipient@example.com"],
-    "cc_addresses": ["cc@example.com"],  // 可选
-    "bcc_addresses": ["bcc@example.com"], // 可选
-    "additional_message": "转发说明"  // 可选
-  }
-  ```
-
-**数据模型扩展**
-- EmailForwardModel: 转发记录数据模型
-- EmailForwardRequest: API请求模型
-- 完整的JSON序列化支持和数据库字段映射
-
-**验证测试**
-- ✅ SMTP连接和认证测试通过
-- ✅ 邮件转发功能完整测试
-- ✅ 附件转发功能验证
-- ✅ 多收件人转发测试
-- ✅ 转发状态追踪功能测试
-- ✅ API接口功能验证
-
-
-## API接口设计
+## API 接口设计
 
 ### 邮件相关
-- `GET /emails` - 获取邮件列表（支持分页、筛选）
-- `GET /emails/{email_id}` - 获取邮件详情
-- `POST /emails/{email_id}/forward` - 转发邮件
-- `GET /emails/{email_id}/attachments/{attachment_id}/download` - 下载附件
+
+- `POST /emails/{email_id}/forward` - 转发邮件 (本微服务实现)
 
 ### 系统管理
+
 - `GET /health` - 健康检查
 - `POST /sync/manual` - 手动触发邮件同步
 - `GET /sync/status` - 获取邮件同步状态
 - `GET /scheduler/status` - 获取调度器状态
 
+### 转发 API 请求格式
+
+```json
+POST /emails/{email_id}/forward
+{
+  "to_addresses": ["recipient@example.com"],
+  "cc_addresses": ["cc@example.com"],     // 可选
+  "bcc_addresses": ["bcc@example.com"],   // 可选
+  "additional_message": "转发说明"         // 可选
+}
+```
+
+## 中间件配置
+
+### CORS 跨域配置
+
+```python
+# 允许的来源
+origins = [
+    "http://localhost:5173",
+    "http://192.168.100.246:5173",
+]
+
+# CORS中间件配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
 ## 关键技术点
 
-1. **邮件去重**: 使用Message-ID作为唯一标识
-2. **附件命名**: `YYYYMMDDHHMM_邮件ID_UUID.扩展名` (使用UUID避免中文文件名兼容性问题)
+1. **邮件去重**: 使用 Message-ID 作为唯一标识
+2. **附件命名**: `YYYYMMDDHHMM_邮件ID_UUID.扩展名` (使用 UUID 避免中文文件名兼容性问题)
 3. **原始邮件头保留**: 转发时保持完整的邮件头信息
-4. **异步处理**: 使用FastAPI的异步特性处理IO密集操作
-5. **错误恢复**: IMAP连接断开重连，邮件处理失败重试
-6. **安全性**: 邮箱密码加密存储，API访问控制
+4. **异步处理**: 使用 FastAPI 的异步特性处理 IO 密集操作
+5. **错误恢复**: IMAP 连接断开重连，邮件处理失败重试
+6. **安全性**: 邮箱密码加密存储，API 访问控制
 
 ## 注意事项
 
-1. **IMAP连接管理**: 合理控制连接数，避免服务器限制
+1. **IMAP 连接管理**: 合理控制连接数，避免服务器限制
 2. **大附件处理**: 设置文件大小限制，流式下载
 3. **邮件编码**: 正确处理各种字符编码
 4. **时区处理**: 邮件时间的时区转换
 5. **内存管理**: 大邮件处理时的内存控制
 
-## 开发状态总结
+## 已知技术限制
 
-**已完成的开发阶段：**
-- ✅ **阶段1**: 项目基础搭建已完成
-- ✅ **阶段2**: 邮件读取和存储功能已完成  
-- ✅ **阶段3**: 定时任务已完成
-- ✅ **阶段4**: 邮件转发功能已完成
+1. **文件存储**: 当前使用同步文件操作，未使用 aiofiles 异步库
+2. **微服务职责**: 邮件查询、详情、下载等API端点由主服务负责实现
+3. **转发表检查**: 数据库启动检查仅验证 emails 和 attachments 表，未检查 email_forwards 表
+4. **配置验证**: 环境变量缺失时的错误提示需要改进
+5. **CORS 配置**: 当前硬编码允许的域名，建议改为环境变量配置
 
-**核心功能实现：**
-1. ✅ 定期从网易企业邮箱读取新邮件并存储到MariaDB
-2. ✅ 附件自动下载和存储管理
-3. ✅ 邮件转发功能，支持多收件人、附件转发、保持原始格式
-4. ✅ 完整的数据库操作和事务管理
-5. ✅ 异步任务调度和状态监控
-6. ✅ RESTful API接口（转发功能）
+## 系统特性
 
-**技术栈完整实现：**
-- FastAPI + 异步数据库连接池
-- IMAP邮件读取 + SMTP邮件发送
-- 网易企业邮箱完整支持
-- MariaDB数据存储
-- APScheduler定时任务
-- 完整的错误处理和日志系统
+### 性能特性
 
-邮箱微服务核心功能开发完成，可投入使用。
+- **异步架构**: 全栈异步处理，支持高并发请求
+- **连接池管理**: 数据库连接池优化，避免连接泄漏
+- **增量同步**: 智能增量同步，减少重复处理
+- **流式处理**: 大附件的流式下载和存储
+
+### 可靠性特性
+
+- **事务保证**: 邮件和附件的原子性操作
+- **自动去重**: 基于 message_id 的智能去重机制
+- **错误恢复**: 连接断开自动重连，任务失败重试
+- **状态监控**: 实时同步状态和系统健康检查
+
+### 安全特性
+
+- **SSL 连接**: IMAP 和 SMTP 均使用 SSL 加密连接
+- **参数验证**: 完整的输入参数验证和错误处理
+- **文件安全**: 安全的文件命名和路径管理
+- **日志审计**: 详细的操作日志和错误追踪
+
+### 扩展性特性
+
+- **模块化设计**: 清晰的分层架构，便于功能扩展
+- **配置驱动**: 环境变量配置，支持不同部署环境
+- **API 标准**: RESTful API 设计，便于集成和扩展
+- **数据模型**: 标准化的数据模型，支持功能演进
+
+## 运维要点
+
+### 监控指标
+
+- 数据库连接池状态
+- 邮件同步成功率和延迟
+- 附件存储空间使用
+- API 响应时间和错误率
+
+### 日志管理
+
+- 统一的日志格式和级别
+- 邮件操作的详细日志
+- 错误追踪和性能分析
+- 定时任务执行记录
+
+### 部署要求
+
+- Python 3.9+ 环境
+- MariaDB 10.3+ 数据库
+- 足够的磁盘空间存储附件
+- 网易企业邮箱访问权限
+
+### 容器化部署
+
+- **Docker支持**: 项目包含完整的Dockerfile配置
+- **基础镜像**: python:3.9
+- **时区设置**: Asia/Shanghai (东八区)
+- **端口映射**: 容器内80端口，可映射到主机端口
+- **启动命令**: uvicorn服务器，绑定所有网络接口
