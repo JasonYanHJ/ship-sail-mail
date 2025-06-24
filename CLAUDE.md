@@ -213,7 +213,7 @@ src/
 - **字符集**: utf8mb4，支持完整 Unicode 字符
 - **事务支持**: 自动回滚机制，确保数据完整性
 - **数据模型**: Pydantic BaseModel，支持 JSON 序列化和验证
-- **表检查**: 启动时检查必需表（emails、attachments）是否存在
+- **表检查**: 启动时检查必需表（emails、attachments、email_forwards）是否存在
 
 ### 3. 邮件读取服务 (services/email_reader.py)
 
@@ -337,9 +337,8 @@ app.add_middleware(
 
 1. **文件存储**: 当前使用同步文件操作，未使用 aiofiles 异步库
 2. **微服务职责**: 邮件查询、详情、下载等API端点由主服务负责实现
-3. **转发表检查**: 数据库启动检查仅验证 emails 和 attachments 表，未检查 email_forwards 表
-4. **配置验证**: 环境变量缺失时的错误提示需要改进
-5. **CORS 配置**: 当前硬编码允许的域名，建议改为环境变量配置
+3. **配置验证**: 环境变量缺失时的错误提示需要改进
+4. **CORS 配置**: 当前硬编码允许的域名，建议改为环境变量配置
 
 ## 系统特性
 

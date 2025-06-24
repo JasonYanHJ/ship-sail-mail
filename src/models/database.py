@@ -93,7 +93,7 @@ class SyncDatabaseManager:
     @staticmethod
     def check_tables():
         """检查数据库表是否存在"""
-        required_tables = ['emails', 'attachments']
+        required_tables = ['emails', 'attachments', 'email_forwards']
 
         try:
             with SyncDatabaseManager.get_sync_connection() as conn:
