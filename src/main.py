@@ -68,14 +68,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-origins = [
-    "http://localhost:5173",
-    "http://192.168.100.246:5173",
-]
-
+# 打印CORS配置用于调试
+logger.info(f"CORS Origins列表: {settings.cors_origins_list}")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

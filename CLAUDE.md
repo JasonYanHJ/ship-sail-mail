@@ -59,11 +59,14 @@ LOG_FILE=               # 日志文件路径（可选）
 API_HOST=0.0.0.0        # API服务绑定主机
 API_PORT=8000           # API服务端口
 DEBUG=false             # 调试模式
+
+# CORS配置
+CORS_ORIGINS=http://localhost:5173,http://example.com  # 允许的跨域来源，逗号分隔
 ```
 
 ## 数据库设计
 
-注意：数据表由Laravel主服务创建和管理，本微服务仅进行数据读写操作
+注意：数据表由 Laravel 主服务创建和管理，本微服务仅进行数据读写操作
 
 ### emails 表
 
@@ -299,21 +302,23 @@ POST /emails/{email_id}/forward
 
 ### CORS 跨域配置
 
-```python
-# 允许的来源
-origins = [
-    "http://localhost:5173",
-    "http://192.168.100.246:5173",
-]
+通过环境变量 `CORS_ORIGINS` 配置允许的跨域来源，多个来源用逗号分隔：
 
+```python
 # CORS中间件配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins_list,  # 从环境变量读取
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+```
+
+环境变量配置示例：
+
+```
+CORS_ORIGINS=http://localhost:5173,http://example.com
 ```
 
 ## 关键技术点
@@ -336,9 +341,8 @@ app.add_middleware(
 ## 已知技术限制
 
 1. **文件存储**: 当前使用同步文件操作，未使用 aiofiles 异步库
-2. **微服务职责**: 邮件查询、详情、下载等API端点由主服务负责实现
+2. **微服务职责**: 邮件查询、详情、下载等 API 端点由主服务负责实现
 3. **配置验证**: 环境变量缺失时的错误提示需要改进
-4. **CORS 配置**: 当前硬编码允许的域名，建议改为环境变量配置
 
 ## 系统特性
 
@@ -395,8 +399,8 @@ app.add_middleware(
 
 ### 容器化部署
 
-- **Docker支持**: 项目包含完整的Dockerfile配置
+- **Docker 支持**: 项目包含完整的 Dockerfile 配置
 - **基础镜像**: python:3.9
 - **时区设置**: Asia/Shanghai (东八区)
-- **端口映射**: 容器内80端口，可映射到主机端口
-- **启动命令**: uvicorn服务器，绑定所有网络接口
+- **端口映射**: 容器内 80 端口，可映射到主机端口
+- **启动命令**: uvicorn 服务器，绑定所有网络接口

@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     api_port: int = 8000
     debug: bool = False
 
+    # CORS配置
+    cors_origins: str = "http://localhost:5173"
+
     class Config:
         env_file = ".env"
         env_file_encoding = 'utf-8'
@@ -51,6 +54,11 @@ class Settings(BaseSettings):
         """确保附件目录存在"""
         if not os.path.exists(self.attachment_path):
             os.makedirs(self.attachment_path, exist_ok=True)
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """将CORS origins字符串解析为列表"""
+        return [origin.strip() for origin in self.cors_origins.split(',') if origin.strip()]
 
 
 # 全局设置实例
