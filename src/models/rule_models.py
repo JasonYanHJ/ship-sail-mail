@@ -178,10 +178,10 @@ class EmailRule(BaseModel):
 class RuleResult(BaseModel):
     """规则执行结果数据模型"""
     should_skip: bool = False
-    field_modifications: Dict[str, Any] = {}
     matched_rules: List[str] = []
     error_messages: List[str] = []
-    execution_time: Optional[float] = None
+    total_time: Optional[float] = None
+    success: bool = True
 
     def add_error(self, error_message: str):
         """添加错误信息"""
