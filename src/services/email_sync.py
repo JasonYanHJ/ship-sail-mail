@@ -186,7 +186,8 @@ class EmailSyncService:
             content_html=parsed_email.get('content_html'),
             date_sent=parsed_email.get('date_sent'),
             date_received=datetime.now(),
-            raw_headers=parsed_email.get('raw_headers')
+            raw_headers=parsed_email.get('raw_headers'),
+            dispatcher_id=parsed_email.get('dispatcher_id'),
         )
 
     async def _process_attachments(self, parsed_email: Dict[str, Any],

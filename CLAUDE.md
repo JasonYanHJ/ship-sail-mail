@@ -101,6 +101,12 @@ Schema::create('emails', function (Blueprint $table) {
     $table->index('date_received', 'idx_date_received');
     $table->index('sender', 'idx_sender');
 });
+Schema::table('emails', function (Blueprint $table) {
+    $table->foreignId('dispatcher_id')
+        ->nullable()
+        ->constrained('users')
+        ->onDelete('no action');
+});
 ```
 
 ### attachments 表

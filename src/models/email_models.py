@@ -18,6 +18,7 @@ class EmailModel(BaseModel):
     date_sent: Optional[datetime] = None
     date_received: Optional[datetime] = None
     raw_headers: Optional[str] = None
+    dispatcher_id: Optional[int] = None  # 处理人ID，NULLABLE bigint unsigned
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -34,7 +35,8 @@ class EmailModel(BaseModel):
             'content_html': self.content_html,
             'date_sent': self.date_sent,
             'date_received': self.date_received,
-            'raw_headers': self.raw_headers
+            'raw_headers': self.raw_headers,
+            'dispatcher_id': self.dispatcher_id
         }
         if self.id:
             data['id'] = self.id
