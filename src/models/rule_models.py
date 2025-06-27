@@ -178,6 +178,7 @@ class EmailRule(BaseModel):
 class RuleResult(BaseModel):
     """规则执行结果数据模型"""
     should_skip: bool = False
+    field_modifications: Dict[str, Any] = {}
     matched_rules: List[str] = []
     error_messages: List[str] = []
     total_time: Optional[float] = None

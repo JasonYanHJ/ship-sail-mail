@@ -54,6 +54,8 @@ class MailScheduler:
                 f"定时邮件同步任务完成，耗时: {duration:.2f}秒，"
                 f"新邮件数: {result.new_emails}，"
                 f"总处理数: {result.total_processed}，"
+                f"重复跳过: {result.duplicates_skipped}，"
+                f"规则跳过: {result.rule_skipped}，"
                 f"错误数: {result.errors}"
             )
 
@@ -136,6 +138,7 @@ class MailScheduler:
                     'total_processed': result.total_processed,
                     'new_emails': result.new_emails,
                     'duplicates_skipped': result.duplicates_skipped,
+                    'rule_skipped': result.rule_skipped,
                     'errors': result.errors,
                     'sync_time': result.sync_time.isoformat() if result.sync_time else None
                 }

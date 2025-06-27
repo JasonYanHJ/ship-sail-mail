@@ -5,6 +5,7 @@ import asyncio
 from ..services.email_reader import EmailReader
 from ..services.email_database import email_db_service
 from ..services.file_storage import file_storage
+from ..services.rule_engine import RuleEngine
 from ..models.email_models import EmailModel, AttachmentModel, EmailSyncStats
 from ..utils.email_parser import EmailParser
 from ..utils.logger import get_logger
@@ -18,6 +19,7 @@ class EmailSyncService:
     def __init__(self):
         self.email_reader = EmailReader()
         self.email_parser = EmailParser()
+        self.rule_engine = RuleEngine()
         self.is_syncing = False
         self.last_sync_time: Optional[datetime] = None
         self.sync_stats = EmailSyncStats()
@@ -80,7 +82,8 @@ class EmailSyncService:
                 logger.info(f"邮件同步完成 - 耗时: {duration.total_seconds():.2f}秒")
                 logger.info(f"统计: 总计{self.sync_stats.total_processed}封, "
                             f"新增{self.sync_stats.new_emails}封, "
-                            f"跳过{self.sync_stats.duplicates_skipped}封, "
+                            f"重复跳过{self.sync_stats.duplicates_skipped}封, "
+                            f"规则跳过{self.sync_stats.rule_skipped}封, "
                             f"错误{self.sync_stats.errors}封")
 
                 return self.sync_stats
@@ -147,15 +150,27 @@ class EmailSyncService:
                 self.sync_stats.duplicates_skipped += 1
                 return
 
-            # 4. 创建邮件模型
+            # 4. 应用规则引擎
+            rule_result = await self.rule_engine.apply_rules(parsed_email)
+
+            # 5. 如果规则决定跳过邮件，则标记并返回
+            if rule_result.should_skip:
+                logger.info(
+                    f"邮件被规则跳过: {message_id}, 匹配规则: {rule_result.matched_rules}")
+                # 标记邮件已处理但不保存到数据库
+                reader.mark_as_flagged(uid)
+                self.sync_stats.rule_skipped += 1  # 计入规则跳过统计
+                return
+
+            # 6. 创建邮件模型
             email_model = await self._create_email_model(parsed_email)
 
-            # 5. 处理附件
+            # 7. 处理附件
             attachment_models = await self._process_attachments(
                 parsed_email, str(uid)
             )
 
-            # 6. 保存到数据库
+            # 8. 保存到数据库
             email_id, attachment_ids = await email_db_service.save_email_with_attachments(
                 email_model, attachment_models
             )
@@ -163,7 +178,7 @@ class EmailSyncService:
             self.sync_stats.new_emails += 1
             self.sync_stats.last_message_id = message_id
 
-            # 7. 标记邮件已处理
+            # 9. 标记邮件已处理
             reader.mark_as_flagged(uid)
 
             logger.debug(f"邮件处理完成: UID={uid}, DB_ID={email_id}, "
@@ -256,6 +271,7 @@ class EmailSyncService:
                     'total_processed': self.sync_stats.total_processed,
                     'new_emails': self.sync_stats.new_emails,
                     'duplicates_skipped': self.sync_stats.duplicates_skipped,
+                    'rule_skipped': self.sync_stats.rule_skipped,
                     'errors': self.sync_stats.errors,
                     'last_message_id': self.sync_stats.last_message_id
                 },

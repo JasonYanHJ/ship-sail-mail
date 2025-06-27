@@ -174,6 +174,7 @@ class EmailSyncStats(BaseModel):
     total_processed: int = 0
     new_emails: int = 0
     duplicates_skipped: int = 0
+    rule_skipped: int = 0
     errors: int = 0
     sync_time: Optional[datetime] = None
     last_message_id: Optional[str] = None
