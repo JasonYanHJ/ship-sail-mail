@@ -526,36 +526,6 @@ class EmailDatabaseService:
             logger.error(f"获取转发记录失败: {e}")
             raise
 
-    async def update_email_dispatcher(self, email_id: int, dispatcher_id: Optional[int]) -> bool:
-        """
-        更新邮件的处理人ID
-
-        Args:
-            email_id: 邮件ID
-            dispatcher_id: 处理人ID，可为None清除处理人
-
-        Returns:
-            更新是否成功
-        """
-        try:
-            async with self.db_manager.get_transaction() as conn:
-                async with conn.cursor() as cursor:
-                    sql = "UPDATE emails SET dispatcher_id = %s WHERE id = %s"
-                    await cursor.execute(sql, (dispatcher_id, email_id))
-                    updated_rows = cursor.rowcount
-
-                    if updated_rows > 0:
-                        logger.info(
-                            f"邮件处理人更新成功: email_id={email_id}, dispatcher_id={dispatcher_id}")
-                        return True
-                    else:
-                        logger.warning(f"邮件不存在: email_id={email_id}")
-                        return False
-
-        except Exception as e:
-            logger.error(f"更新邮件处理人失败: {e}")
-            raise
-
     async def update_email_field(self, email_id: int, field_name: str, field_value: Any) -> bool:
         """
         更新邮件的指定字段
@@ -570,7 +540,7 @@ class EmailDatabaseService:
         """
         try:
             # 安全检查：只允许更新特定字段
-            allowed_fields = {'dispatcher_id'}
+            allowed_fields = {'dispatcher_id', 'rfq', 'rfq_type'}
             if field_name not in allowed_fields:
                 logger.error(f"不允许更新字段: {field_name}")
                 raise ValueError(f"不允许更新字段: {field_name}")

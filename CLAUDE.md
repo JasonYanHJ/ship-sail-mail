@@ -107,6 +107,10 @@ Schema::table('emails', function (Blueprint $table) {
         ->constrained('users')
         ->onDelete('no action');
 });
+Schema::table('emails', function (Blueprint $table) {
+    $table->boolean('rfq')->nullable()->comment('询价邮件标记');
+    $table->string('rfq_type', 100)->nullable()->comment('询价邮件类型');
+});
 ```
 
 ### attachments 表
