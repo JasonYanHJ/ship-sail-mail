@@ -32,7 +32,8 @@ async def forward_email(email_id: int, request: EmailForwardRequest):
             to_addresses=request.to_addresses,
             cc_addresses=request.cc_addresses,
             bcc_addresses=request.bcc_addresses,
-            additional_message=request.additional_message
+            additional_message=request.additional_message,
+            reply_to=request.reply_to,
         )
 
         if success:

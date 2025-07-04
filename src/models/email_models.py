@@ -103,6 +103,7 @@ class EmailForwardRequest(BaseModel):
     cc_addresses: Optional[List[str]] = None
     bcc_addresses: Optional[List[str]] = None
     additional_message: Optional[str] = None
+    reply_to: Optional[List[str]] = None,
 
 
 class EmailListResponse(BaseModel):

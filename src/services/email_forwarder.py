@@ -39,7 +39,8 @@ class EmailForwarder:
         to_addresses: List[str],
         cc_addresses: Optional[List[str]] = None,
         bcc_addresses: Optional[List[str]] = None,
-        additional_message: Optional[str] = None
+        additional_message: Optional[str] = None,
+        reply_to: Optional[List[str]] = None,
     ) -> bool:
         """
         转发邮件
@@ -50,6 +51,7 @@ class EmailForwarder:
             cc_addresses: 抄送人列表
             bcc_addresses: 密送人列表
             additional_message: 附加消息
+            reply_to: 回复人列表
 
         Returns:
             bool: 转发是否成功
@@ -84,7 +86,8 @@ class EmailForwarder:
                     to_addresses,
                     cc_addresses,
                     bcc_addresses,
-                    additional_message
+                    additional_message,
+                    reply_to,
                 )
 
                 # 更新转发状态
@@ -115,7 +118,8 @@ class EmailForwarder:
         to_addresses: List[str],
         cc_addresses: Optional[List[str]] = None,
         bcc_addresses: Optional[List[str]] = None,
-        additional_message: Optional[str] = None
+        additional_message: Optional[str] = None,
+        reply_to: Optional[List[str]] = None,
     ) -> bool:
         """发送转发邮件"""
         try:
@@ -128,6 +132,8 @@ class EmailForwarder:
             msg['To'] = ', '.join(to_addresses)
             if cc_addresses:
                 msg['Cc'] = ', '.join(cc_addresses)
+            if reply_to:
+                msg['Reply-To'] = ', '.join(reply_to)
 
             # 转发邮件主题
             original_subject = original_email.subject or ''
@@ -139,7 +145,7 @@ class EmailForwarder:
 
             # 构建邮件内容
             email_body = self._build_forward_body(
-                original_email, additional_message)
+                original_email, additional_message, reply_to)
 
             # 添加HTML内容
             if original_email.content_html:
@@ -169,7 +175,7 @@ class EmailForwarder:
             logger.error(f"Error building forward email: {str(e)}")
             return False
 
-    def _build_forward_body(self, original_email, additional_message: Optional[str] = None) -> str:
+    def _build_forward_body(self, original_email, additional_message: Optional[str] = None, reply_to: Optional[List[str]] = None) -> str:
         """构建转发邮件正文"""
         try:
             # 获取原始邮件信息
@@ -203,6 +209,7 @@ From: {original_from}
 Date: {original_date}
 Subject: {original_subject}
 To: {original_to}
+Reply-To: {', '.join(reply_to)}
 """
 
             if original_cc:
@@ -308,7 +315,7 @@ To: {original_to}
 
             # 设置附件头，保持原有的content-disposition-type
             disposition_type = attachment.content_disposition_type or 'inline'
-            
+
             # 对文件名进行RFC2231编码以支持中文文件名
             encoded_filename = self._encode_filename_rfc2231(original_filename)
             attachment_part.add_header(
@@ -328,14 +335,14 @@ To: {original_to}
             logger.error(
                 f"Error adding attachment {getattr(attachment, 'original_filename', 'unknown')}: {str(e)}")
             return False
-    
+
     def _encode_filename_rfc2231(self, filename: str) -> str:
         """
         使用RFC2231标准编码文件名以支持中文字符
-        
+
         Args:
             filename: 原始文件名
-            
+
         Returns:
             编码后的filename参数字符串
         """
