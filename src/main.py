@@ -38,6 +38,7 @@ async def lifespan(app: FastAPI):
     try:
         mail_scheduler.start()
         logger.info("邮件调度器启动完成")
+        logger.info(f"连接邮箱: {settings.email_username}")
     except Exception as e:
         logger.error(f"邮件调度器启动失败: {e}")
         # 不阻止服务启动，但记录警告
