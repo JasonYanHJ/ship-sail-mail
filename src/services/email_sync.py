@@ -102,7 +102,7 @@ class EmailSyncService:
             reader.select_folder('INBOX')
 
             # 构建搜索条件：未读邮件 + 指定日期之后（如果提供）
-            search_criteria = ['UNFLAGGED']
+            search_criteria = ['FLAGGED']
             if since_date:
                 search_criteria.extend(
                     ['SINCE', since_date.strftime("%d-%b-%Y")])
@@ -158,7 +158,7 @@ class EmailSyncService:
                 logger.info(
                     f"邮件被规则跳过: {message_id}, 匹配规则: {rule_result.matched_rules}")
                 # 标记邮件已处理但不保存到数据库
-                reader.mark_as_flagged(uid)
+                reader.mark_as_unflagged(uid)
                 self.sync_stats.rule_skipped += 1  # 计入规则跳过统计
                 return
 
@@ -179,7 +179,7 @@ class EmailSyncService:
             self.sync_stats.last_message_id = message_id
 
             # 9. 标记邮件已处理
-            reader.mark_as_flagged(uid)
+            reader.mark_as_unflagged(uid)
 
             logger.debug(f"邮件处理完成: UID={uid}, DB_ID={email_id}, "
                          f"附件数={len(attachment_ids)}")

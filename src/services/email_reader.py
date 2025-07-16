@@ -146,13 +146,13 @@ class EmailReader:
             logger.error(f"获取邮件 {message_id} 标志失败: {e}")
             return []
 
-    def mark_as_flagged(self, message_id: int) -> bool:
+    def mark_as_unflagged(self, message_id: int) -> bool:
         """标记邮件为已读"""
         if not self.connected or not self.client:
             raise Exception("未连接到IMAP服务器")
 
         try:
-            self.client.add_flags([message_id], ['\\FLAGGED'])
+            self.client.remove_flags([message_id], ['\\FLAGGED'])
             logger.debug(f"邮件 {message_id} 已标记为已读")
             return True
         except Exception as e:
