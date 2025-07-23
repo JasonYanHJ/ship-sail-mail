@@ -73,6 +73,7 @@ class AttachmentModel(BaseModel):
     content_type: Optional[str] = None
     content_disposition_type: Optional[str] = None
     content_id: Optional[str] = None
+    extra: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
 
     def to_db_dict(self) -> Dict[str, Any]:
@@ -85,7 +86,8 @@ class AttachmentModel(BaseModel):
             'file_size': self.file_size,
             'content_type': self.content_type,
             'content_disposition_type': self.content_disposition_type,
-            'content_id': self.content_id
+            'content_id': self.content_id,
+            'extra': json.dumps(self.extra, ensure_ascii=False) if self.extra else None
         }
         if self.id:
             data['id'] = self.id
@@ -94,7 +96,13 @@ class AttachmentModel(BaseModel):
     @classmethod
     def from_db_dict(cls, data: Dict[str, Any]) -> 'AttachmentModel':
         """从数据库记录创建模型"""
-        return cls(**data)
+        attachment_data = data.copy()
+        
+        # 解析JSON字段
+        if attachment_data.get('extra'):
+            attachment_data['extra'] = json.loads(attachment_data['extra'])
+        
+        return cls(**attachment_data)
 
 
 class EmailForwardRequest(BaseModel):

@@ -144,6 +144,9 @@ Schema::table('attachments', function (Blueprint $table) {
     $table->string('content_id', 255)->nullable();
     $table->index('content_id', 'idx_content_id');
 });
+Schema::table('attachments', function (Blueprint $table) {
+    $table->json('extra')->nullable();
+});
 ```
 
 ### email_forwards 表

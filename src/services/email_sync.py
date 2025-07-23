@@ -247,7 +247,8 @@ class EmailSyncService:
                     file_size=file_info['file_size'],
                     content_type=content_type,
                     content_disposition_type=content_disposition_type,
-                    content_id=content_id
+                    content_id=content_id,
+                    extra=None
                 )
 
                 attachment_models.append(attachment_model)
