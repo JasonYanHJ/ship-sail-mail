@@ -9,6 +9,7 @@ from ..services.rule_engine import RuleEngine
 from ..models.email_models import EmailModel, AttachmentModel, EmailSyncStats
 from ..utils.email_parser import EmailParser
 from ..utils.logger import get_logger
+from ..services.email_extra_process.shipserv import process_shipserv_pdf
 
 logger = get_logger("email_sync")
 
@@ -170,7 +171,10 @@ class EmailSyncService:
                 parsed_email, str(uid)
             )
 
-            # 8. 保存到数据库
+            # 8. 根据邮件类别额外处理邮件
+            await self._process_email_extra(parsed_email, attachment_models)
+
+            # 9. 保存到数据库
             email_id, attachment_ids = await email_db_service.save_email_with_attachments(
                 email_model, attachment_models
             )
@@ -178,7 +182,7 @@ class EmailSyncService:
             self.sync_stats.new_emails += 1
             self.sync_stats.last_message_id = message_id
 
-            # 9. 标记邮件已处理
+            # 10. 标记邮件已处理
             reader.mark_as_unflagged(uid)
 
             logger.debug(f"邮件处理完成: UID={uid}, DB_ID={email_id}, "
@@ -186,6 +190,42 @@ class EmailSyncService:
 
         except Exception as e:
             logger.error(f"处理邮件失败 UID={uid}: {e}")
+            raise
+
+    async def _process_email_extra(self, parsed_email: Dict[str, Any], attachment_models: List[AttachmentModel]):
+        # 不处理非询价邮件
+        if parsed_email['rfq'] != True:
+            return
+
+        try:
+            if parsed_email['rfq_type'] == 'ShipServ':
+                logger.debug(
+                    f"开始额外处理shipserv邮件: message_id={parsed_email['message_id']}")
+
+                # 逐个处理附件
+                for attachment_model in attachment_models:
+                    file_path = attachment_model.file_path
+
+                    # 跳过非pdf附件
+                    if not file_path.endswith('.pdf'):
+                        continue
+
+                    # 解析询价pdf数据
+                    result = process_shipserv_pdf(file_path)
+                    if not result:
+                        continue
+
+                    # 将数据保存在附件的extra字段中
+                    attachment_model.extra = {
+                        'type': 'ShipServ',
+                        'version': 1,
+                        'table_data': result['table_data'],
+                        'section_data': result['section_data'],
+                        'meta_data': result['meta_data'],
+                    }
+                return
+        except Exception as e:
+            logger.error(f"邮件额外处理失败: {e}")
             raise
 
     async def _create_email_model(self, parsed_email: Dict[str, Any]) -> EmailModel:
