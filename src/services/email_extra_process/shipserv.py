@@ -2,8 +2,6 @@ import pdfplumber
 from pdfplumber.page import Page
 from pdfplumber.pdf import PDF
 from pdfplumber._typing import T_bbox, T_num, T_obj_list
-from PIL import Image
-from PIL.Image import Image as T_image
 import re
 
 from ...utils.logger import get_logger
@@ -13,7 +11,7 @@ logger = get_logger("extra_shipserv")
 
 def process_shipserv_pdf(pdf_path: str) -> dict:
     """
-    处理PDF文件，提取表格数据并生成拼接后的图片。
+    处理PDF文件，提取表格数据。
 
     Args:
         pdf_path (str): PDF文件的路径。
@@ -22,28 +20,21 @@ def process_shipserv_pdf(pdf_path: str) -> dict:
             - 'table_data': list[list[str]] - 表格数据
             - 'section_data': list[dict] - "section"部分的键值对数据
             - 'meta_data': list[dict] - 附件元数据的键值对数据
-            - 'image': T_image - 拼接后的图片
     """
 
     try:
         meta_data = {}
-        table_images = []
         table_data = []
         section_data = []
 
         with pdfplumber.open(pdf_path) as pdf:
             try:
-                # 获取表格数据和图片
+                # 获取表格数据
                 for page in pdf.pages:
                     # 获取表格区域
                     region = get_table_region_in_page(page)
                     if not region:
                         continue
-
-                    # 添加表格区域的图片
-                    im = page.crop(region).to_image(resolution=300)
-                    pil_image = im.original
-                    table_images.append(pil_image)
 
                     # 解析表格
                     header_data, body_data = extract_table_data(page, region)
@@ -64,8 +55,6 @@ def process_shipserv_pdf(pdf_path: str) -> dict:
                 logger.error(
                     f"Error processing page {page.page_number} in {pdf_path}: {e}")
 
-        stitched_image = concat_images_vertically(table_images)
-
     except Exception as e:
         logger.error(f"Error opening PDF {pdf_path}: {e}")
         return None
@@ -74,7 +63,6 @@ def process_shipserv_pdf(pdf_path: str) -> dict:
         'meta_data': meta_data,
         'table_data': table_data,
         'section_data': section_data,
-        'image': stitched_image,
     }
 
 
@@ -273,36 +261,6 @@ def find_header_top(page: Page, tables_top: T_num) -> T_num | None:
 
     # 返回该行的顶部位置
     return header_top
-
-
-def concat_images_vertically(images: T_image, gap=5) -> T_image:
-    """
-    将多张图片垂直拼接成一张大图。
-
-    Args:
-        images (list[T_image]): 要拼接的图片列表。
-        gap (int): 图片之间的间隔，默认为5像素。
-    Returns:
-        T_image: 返回拼接后的图片。
-    """
-
-    widths = [img.width for img in images]
-    heights = [img.height for img in images]
-
-    # 计算拼接后的总尺寸
-    total_width = max(widths)
-    total_height = sum(heights) + gap * (len(images) - 1)
-
-    # 创建新的空白图片（黑底）
-    result = Image.new('RGB', (total_width, total_height), 'black')
-
-    # 逐个粘贴图片
-    y_offset = 0
-    for img in images:
-        result.paste(img, (0, y_offset))
-        y_offset += img.height + gap
-
-    return result
 
 
 def extract_dict_from_lines_by_font(page: Page, lines: T_obj_list) -> dict:
