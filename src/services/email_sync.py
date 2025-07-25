@@ -194,11 +194,11 @@ class EmailSyncService:
 
     async def _process_email_extra(self, parsed_email: Dict[str, Any], attachment_models: List[AttachmentModel]):
         # 不处理非询价邮件
-        if parsed_email['rfq'] != True:
+        if parsed_email.get('rfq') != True:
             return
 
         try:
-            if parsed_email['rfq_type'] == 'ShipServ':
+            if parsed_email.get('rfq_type') == 'ShipServ':
                 logger.debug(
                     f"开始额外处理shipserv邮件: message_id={parsed_email['message_id']}")
 
