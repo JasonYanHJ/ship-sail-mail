@@ -56,6 +56,15 @@ class DatabaseManager:
                 raise
 
     @asynccontextmanager
+    async def get_read_connection(self) -> AsyncGenerator[aiomysql.Connection, None]:
+        """专用于只读操作的连接，自动提交"""
+        async with self.get_connection() as conn:
+            try:
+                yield conn
+            finally:
+                await conn.commit()  # 确保提交隐式事务
+
+    @asynccontextmanager
     async def get_transaction(self) -> AsyncGenerator[aiomysql.Connection, None]:
         """获取带事务的数据库连接"""
         async with self.get_connection() as conn:

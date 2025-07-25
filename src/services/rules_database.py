@@ -22,7 +22,7 @@ class RulesDatabaseService:
             规则列表
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     # 获取所有规则基本信息
                     sql = """
@@ -57,9 +57,7 @@ class RulesDatabaseService:
             激活的规则列表
         """
         try:
-            async with self.db_manager.get_connection() as conn:
-                # 确保获取最新数据，提交任何未提交的事务
-                await conn.commit()
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     # 只获取激活的规则
                     sql = """
@@ -98,7 +96,7 @@ class RulesDatabaseService:
             规则实例，如果不存在返回None
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     sql = "SELECT * FROM email_rules WHERE id = %s"
                     await cursor.execute(sql, (rule_id,))
@@ -130,7 +128,7 @@ class RulesDatabaseService:
             条件组列表
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     sql = """
                         SELECT * FROM rule_condition_groups 
@@ -166,7 +164,7 @@ class RulesDatabaseService:
             条件列表
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     sql = """
                         SELECT * FROM rule_conditions 
@@ -199,7 +197,7 @@ class RulesDatabaseService:
             动作列表
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     sql = """
                         SELECT * FROM rule_actions 
@@ -235,7 +233,7 @@ class RulesDatabaseService:
         ]
 
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor() as cursor:
                     missing_tables = []
 
@@ -265,7 +263,7 @@ class RulesDatabaseService:
             统计信息字典
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     stats = {}
 

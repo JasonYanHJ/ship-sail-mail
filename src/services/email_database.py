@@ -177,7 +177,7 @@ class EmailDatabaseService:
             邮件模型，如果不存在返回None
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     sql = "SELECT * FROM emails WHERE id = %s"
                     await cursor.execute(sql, (email_id,))
@@ -202,7 +202,7 @@ class EmailDatabaseService:
             邮件模型，如果不存在返回None
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     sql = "SELECT * FROM emails WHERE message_id = %s"
                     await cursor.execute(sql, (message_id,))
@@ -227,7 +227,7 @@ class EmailDatabaseService:
             附件模型列表
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     sql = "SELECT * FROM attachments WHERE email_id = %s ORDER BY id"
                     await cursor.execute(sql, (email_id,))
@@ -253,7 +253,7 @@ class EmailDatabaseService:
             (邮件列表, 总数)
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     # 构建查询条件
                     where_clause = ""
@@ -296,7 +296,7 @@ class EmailDatabaseService:
             是否存在
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor() as cursor:
                     sql = "SELECT 1 FROM emails WHERE message_id = %s LIMIT 1"
                     await cursor.execute(sql, (message_id,))
@@ -315,7 +315,7 @@ class EmailDatabaseService:
             最新邮件的接收时间，如果没有邮件返回None
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor() as cursor:
                     sql = "SELECT MAX(date_received) FROM emails"
                     await cursor.execute(sql)
@@ -337,7 +337,7 @@ class EmailDatabaseService:
             统计信息字典
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     # 总邮件数
                     await cursor.execute("SELECT COUNT(*) as total FROM emails")
@@ -485,7 +485,7 @@ class EmailDatabaseService:
             转发历史列表
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     sql = """
                         SELECT * FROM email_forwards 
@@ -512,7 +512,7 @@ class EmailDatabaseService:
             转发记录字典，如果不存在返回None
         """
         try:
-            async with self.db_manager.get_connection() as conn:
+            async with self.db_manager.get_read_connection() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
                     sql = "SELECT * FROM email_forwards WHERE id = %s"
                     await cursor.execute(sql, (forward_id,))
