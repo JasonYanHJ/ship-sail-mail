@@ -75,21 +75,25 @@ def extract_subject_data(pdf: PDF) -> dict:
     Returns:
         dict: 返回"subject"部分的键值对字典。如果未找到，则返回空字典。
     """
-    for page in pdf.pages:
-        # subject信息固定在页面左半侧，裁剪页面避免右半侧数据干扰
-        cropped_page = page.crop((0, 0, page.width / 2 - 5, page.height))
+    try:
+        for page in pdf.pages:
+            # subject信息固定在页面左半侧，裁剪页面避免右半侧数据干扰
+            cropped_page = page.crop((0, 0, page.width / 2 - 5, page.height))
 
-        # 查询以'Subject:'开头的主题行
-        lines = cropped_page.extract_text_lines()
-        matched_lines = [
-            line for line in lines if line['text'].startswith('Subject:')]
-        if not matched_lines:
-            continue
-        subject_line = matched_lines[0]
+            # 查询以'Subject:'开头的主题行
+            lines = cropped_page.extract_text_lines()
+            matched_lines = [
+                line for line in lines if line['text'].startswith('Subject:')]
+            if not matched_lines:
+                continue
+            subject_line = matched_lines[0]
 
-        return extract_dict_from_lines_by_font(page, [subject_line])
+            return extract_dict_from_lines_by_font(page, [subject_line])
 
-    return {}
+        return {}
+    except Exception as e:
+        logger.error(f"Error extracting subject: {e}")
+        return {}
 
 
 def extract_section_data(pdf: PDF, table_results: list[list[str]]) -> list[dict]:
@@ -103,42 +107,51 @@ def extract_section_data(pdf: PDF, table_results: list[list[str]]) -> list[dict]
         list[dict]: 返回一个"section"部分的键值对数据的字典列表。
     """
 
-    # 查找以"Equipment Section Name"开头的单元格
-    section_cells = [row[0] for row in table_results if row and row[0].startswith(
-        "Equipment Section Name")]
-    # 保留原本顺序并去重
-    section_cells = list(dict.fromkeys(section_cells))
-    if not section_cells:
+    try:
+        # 查找以"Equipment Section Name"开头的单元格
+        section_cells = [row[0] for row in table_results if row and row[0].startswith(
+            "Equipment Section Name")]
+        # 保留原本顺序并去重
+        section_cells = list(dict.fromkeys(section_cells))
+        if not section_cells:
+            return []
+
+        # 提取页面中的文本行
+        lines = []
+        for (pageIndex, page) in enumerate(pdf.pages):
+            for line in page.extract_text_lines():
+                lines.append((line, pageIndex))
+
+        dicts = []
+        for cell in section_cells:
+            # 查找与单元格内容匹配的文本行
+            # 这里单元格内容是以换行符分隔的
+            section_lines_text = cell.split('\n')
+
+            section_lines = []
+            pageIndex = None
+            for text in section_lines_text:
+                for (line, pIndex) in lines:
+                    if line['text'] == text:
+                        pageIndex = pIndex
+                        section_lines.append(line)
+                        break
+
+            # 如果没有找到匹配的文本行，则警告并跳过
+            if not section_lines:
+                logger.warning(
+                    f"No matching section lines found for '{cell}'.")
+                continue
+
+            # 提取与单元格内容匹配的文本行的字典
+            section_dict = extract_dict_from_lines_by_font(
+                pdf.pages[pageIndex], section_lines)
+            dicts.append(section_dict)
+
+        return dicts
+    except Exception as e:
+        logger.error(f"Error extracting sections: {e}")
         return []
-
-    # 提取页面中的文本行
-    lines = []
-    for (pageIndex, page) in enumerate(pdf.pages):
-        for line in page.extract_text_lines():
-            lines.append((line, pageIndex))
-
-    dicts = []
-    for cell in section_cells:
-        # 查找与单元格内容匹配的文本行
-        # 这里单元格内容是以换行符分隔的
-        section_lines_text = cell.split('\n')
-        section_lines_info = [
-            (line, pageIndex) for (line, pageIndex) in lines if line['text'] in section_lines_text]
-        pageIndex = section_lines_info[0][1]
-        section_lines = [line for (line, pageIndex) in section_lines_info]
-
-        # 如果没有找到匹配的文本行，则警告并跳过
-        if not section_lines:
-            logger.warning(
-                f"No matching section lines found for '{cell}'.")
-            continue
-
-        # 提取与单元格内容匹配的文本行的字典
-        section_dict = extract_dict_from_lines_by_font(
-            pdf.pages[pageIndex], section_lines)
-        dicts.append(section_dict)
-
-    return dicts
 
 
 def extract_table_data(page: Page, region: T_bbox) -> list[list[str]]:
