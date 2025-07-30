@@ -286,25 +286,22 @@ def extract_dict_from_lines_by_font(page: Page, lines: T_obj_list) -> dict:
     Returns:
         dict: 返回一个包含键值对的字典，键和值根据字体类型区分。
     """
-    chars = []
-    words_len = []
+    words = []
 
     for line in lines:
         bbox = pdfplumber.utils.obj_to_bbox(line)
-        words = page.crop(bbox).extract_words()
-        chars.extend(line['chars'])
-        words_len.extend([len(word['text']) for word in words])
+        words.extend(page.crop(bbox).extract_words(
+            return_chars=True, x_tolerance=2))
 
-    return extract_dict_from_chars_and_words_by_font(chars, words_len)
+    return extract_dict_from_words_by_font(words)
 
 
-def extract_dict_from_chars_and_words_by_font(chars: T_obj_list, words_len: list[int]) -> dict:
+def extract_dict_from_words_by_font(words: T_obj_list) -> dict:
     """
-    从字符列表和单词长度列表中提取键值对字典，使用字体类型区分键和值。
+    从单词列表中提取键值对字典，使用字体类型区分键和值。
 
     Args:
-        chars (T_obj_list): 字符列表，每个字符包含字体名称和文本。
-        words_len (list[int]): 单词长度列表，对应于字符列表中的单词。
+        words (T_obj_list): 单词列表，每个单词包含文本以及字符列表，每个字符包含字体信息。
     Returns:
         dict: 返回一个包含键值对的字典，键和值根据字体类型区分。
     """
@@ -312,12 +309,11 @@ def extract_dict_from_chars_and_words_by_font(chars: T_obj_list, words_len: list
     result = {}
     item = dict(key="", value="")
     state = "key"  # 当前是key还是value
-    word_cnt = 0  # 当前单词计数
-    char_cnt = 0  # 当前字符计数
 
-    for char in chars:
-        font_name = char.get('fontname', '')
-        text = char.get('text', '')
+    for word in words:
+        font_name = word['chars'][0]['fontname']
+        text = word.get('text', '')
+        text += ' '  # 单词之间使用空格分割，多余的空格后续会消除
 
         # 判断字体类型
         if 'Bold' in font_name:
@@ -337,15 +333,8 @@ def extract_dict_from_chars_and_words_by_font(chars: T_obj_list, words_len: list
             # 如果不是粗体或常规体，跳过
             continue
 
-        # 如果是单词的最后一个字符，需要添加空格
-        if char_cnt == words_len[word_cnt]:
-            item[state] += ' '
-            char_cnt = 0
-            word_cnt += 1
-
         # 根据当前状态添加文本
         item[state] += text
-        char_cnt += len(text)
 
     # 处理最后一对键值
     if item['key'] and item['value']:
