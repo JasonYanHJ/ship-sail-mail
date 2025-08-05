@@ -1,8 +1,7 @@
 import pdfplumber
 from pdfplumber.page import Page
 from pdfplumber.pdf import PDF
-from pdfplumber._typing import T_bbox, T_num, T_obj_list
-import re
+from pdfplumber._typing import T_obj_list
 
 from ...utils.logger import get_logger
 
@@ -17,7 +16,7 @@ def process_shipserv_pdf(pdf_path: str) -> dict:
         pdf_path (str): PDF文件的路径。
     Returns:
         dict: 返回一个字典，包含以下键：
-            - 'table_data': list[list[str]] - 表格数据
+            - 'table_data': list[list[list[str]]] - 表格数据，每个section对应一张表
             - 'section_data': list[dict] - "section"部分的键值对数据
             - 'meta_data': list[dict] - 附件元数据的键值对数据
     """
@@ -30,19 +29,7 @@ def process_shipserv_pdf(pdf_path: str) -> dict:
         with pdfplumber.open(pdf_path) as pdf:
             try:
                 # 获取表格数据
-                for page in pdf.pages:
-                    # 获取表格区域
-                    region = get_table_region_in_page(page)
-                    if not region:
-                        continue
-
-                    # 解析表格
-                    header_data, body_data = extract_table_data(page, region)
-                    # 如果数据为空，则添加表头数据
-                    if not table_data:
-                        table_data.extend(header_data)
-                    # 添加表体数据
-                    table_data.extend(body_data)
+                table_data = extract_table_data(pdf)
 
                 # 提取"section"部分的数据
                 section_data = extract_section_data(pdf, table_data)
@@ -53,7 +40,7 @@ def process_shipserv_pdf(pdf_path: str) -> dict:
 
             except Exception as e:
                 logger.error(
-                    f"Error processing page {page.page_number} in {pdf_path}: {e}")
+                    f"Error processing {pdf_path}: {e}")
 
     except Exception as e:
         logger.error(f"Error opening PDF {pdf_path}: {e}")
@@ -78,17 +65,27 @@ def extract_subject_data(pdf: PDF) -> dict:
     try:
         for page in pdf.pages:
             # subject信息固定在页面左半侧，裁剪页面避免右半侧数据干扰
-            cropped_page = page.crop((0, 0, page.width / 2 - 5, page.height))
+            cropped_page = page.crop((0, 0, page.width / 2, page.height))
 
-            # 查询以'Subject:'开头的主题行
+            # 查询以'Subject:'开头的主题行，以及可能的由主题过长导致的后续行
             lines = cropped_page.extract_text_lines()
-            matched_lines = [
-                line for line in lines if line['text'].startswith('Subject:')]
-            if not matched_lines:
-                continue
-            subject_line = matched_lines[0]
+            subject_lines_start_index = -1
+            subject_lines_end_index = -1
+            for i, line in enumerate(lines):
+                if line['text'].startswith("Subject:"):
+                    subject_lines_start_index = i
+                    break
+            for i, line in enumerate(lines[(subject_lines_start_index+1):]):
+                # 后续行的字体都是常规体
+                if "Regular" not in line['chars'][0]['fontname']:
+                    subject_lines_end_index = i + 1 + subject_lines_start_index
+                    break
 
-            return extract_dict_from_lines_by_font(page, [subject_line])
+            if subject_lines_start_index == -1 or subject_lines_end_index == -1:
+                continue
+            subject_lines = lines[subject_lines_start_index:subject_lines_end_index]
+
+            return extract_dict_from_lines_by_font(page, subject_lines)
 
         return {}
     except Exception as e:
@@ -96,21 +93,20 @@ def extract_subject_data(pdf: PDF) -> dict:
         return {}
 
 
-def extract_section_data(pdf: PDF, table_results: list[list[str]]) -> list[dict]:
+def extract_section_data(pdf: PDF, table_data: list[list[list[str]]]) -> list[dict]:
     """
     从页面中提取"section"部分的键值对数据。
 
     Args:
         pdf (PDF): PDF对象。
-        table_results (list[list[str]]): 表格数据。
+        table_results (list[list[list[str]]]): 表格数据。
     Returns:
         list[dict]: 返回一个"section"部分的键值对数据的字典列表。
     """
 
     try:
-        # 查找以"Equipment Section Name"开头的单元格
-        section_cells = [row[0] for row in table_results if row and row[0].startswith(
-            "Equipment Section Name")]
+        # 每张表的第一个单元格为section信息
+        section_cells = [table[0][0] for table in table_data]
         # 保留原本顺序并去重
         section_cells = list(dict.fromkeys(section_cells))
         if not section_cells:
@@ -154,126 +150,51 @@ def extract_section_data(pdf: PDF, table_results: list[list[str]]) -> list[dict]
         return []
 
 
-def extract_table_data(page: Page, region: T_bbox) -> list[list[str]]:
+def extract_table_data(pdf: PDF) -> list[list[list[str]]]:
     """
-    从页面中提取表格数据。
+    从PDF中提取表格数据，每张表格对应一个section。
 
     Args:
-        page (Page): PDF页面对象。
-        region (T_bbox): 表格区域的坐标。
+        pdf (PDF): PDF对象。
     Returns:
-        tuple[list[list[str]], list[list[str]]]: 返回表头数据和表体数据
+        list[list[list[str]]: 返回表格数据(list[list[str])的数组，每个section对应一张表格
     """
 
-    cropped_page = page.crop(region)
+    try:
+        results = []
+        section_result = None
 
-    # 表格区域横纵分割线的坐标
-    vertical_xs = []
-    horizontal_ys = []
+        for page in pdf.pages:
+            for table in page.extract_tables():
+                firtst_cell = table[0][0]
 
-    # 额外添加外围边界
-    vertical_xs.extend([region[0], region[2]])
-    horizontal_ys.extend([region[1], region[3]])
+                # 新的section
+                if firtst_cell.startswith('Equipment Section Name'):
+                    # 将之前的表添加到返回结果中
+                    if section_result:
+                        results.append(section_result)
 
-    # 从页面中的线条对象获取分割线
-    for line in cropped_page.lines:
-        if abs(line['x0'] - line['x1']) < 1:  # 纵向线
-            vertical_xs.append(line['x0'])  # 记录x坐标
-        if abs(line['top'] - line['bottom']) < 1:   # 横向线
-            horizontal_ys.append(line['top'])  # 记录y坐标
+                    # 将当前table作为新的section_result
+                    section_result = table
 
-    # 去重并排序
-    vertical_xs = sorted(list(set(vertical_xs)))
-    horizontal_ys = sorted(list(set(horizontal_ys)))
+                # 以'#'开头的续表
+                elif firtst_cell == '#':
+                    # 将除去额外表头的剩余表格添加到section_result中
+                    section_result.extend(table[1:])
 
-    # 表头行的横向分割线
-    header_line_bottom = horizontal_ys[1]
+                # 其他意外情况
+                else:
+                    logger.warn(f"Unrecognized table type.")
 
-    # 表头和表体的区域
-    header_region = (region[0], region[1], region[2], header_line_bottom)
-    body_region = (region[0], header_line_bottom, region[2], region[3])
+            # 将最后一张表添加到返回结果中
+            if section_result:
+                results.append(section_result)
 
-    # 表头数据
-    # 由于表头缺少纵向分割线，使用显式的纵向分割线提取表头数据
-    header_data = page.crop(header_region).extract_table(dict(
-        vertical_strategy='explicit',
-        explicit_vertical_lines=vertical_xs,
-    ))
+        return results
 
-    # 表体数据
-    # 由于自动检测的横向分割线有时会缺少一部分，使用显式的横向分割线提取表体数据
-    body_data = page.crop(body_region).extract_table(dict(
-        horizontal_strategy='explicit',
-        explicit_horizontal_lines=horizontal_ys[1:],  # 跳过表头行
-    ))
-
-    return (header_data, body_data)
-
-
-def get_table_region_in_page(page: Page) -> T_bbox | None:
-    """
-    获取页面中表格的区域。
-
-    Args:
-        page (Page): PDF页面对象。
-    Returns:
-        T_bbox | None: 返回表格区域的坐标。如果未找到表格区域，则返回None。
-    """
-
-    tables = page.find_tables()
-    if not tables:
-        return None
-
-    # 获取表格区域的上下边界
-    # 注意：此时的上边界不包含表头
-    tables_top = tables[0].bbox[1]
-    tables_bottom = tables[-1].bbox[3]
-
-    # 裁剪页面以仅包含表格区域
-    # 并获取表格区域的左右边界
-    cropped_page = page.crop((0, tables_top, page.width, tables_bottom))
-    lines = cropped_page.lines
-    left = min(line['x0'] for line in lines)
-    right = max(line['x1'] for line in lines)
-
-    # 查找表头行的顶部位置
-    header_top = find_header_top(page, tables_top)
-    # 如果找到了表头行的顶部位置，则更新表格区域的上边界
-    if not header_top:
-        raise RuntimeError("No header found")
-    tables_top = header_top
-
-    return (left, tables_top, right, tables_bottom)
-
-
-def find_header_top(page: Page, tables_top: T_num) -> T_num | None:
-    """
-    查找表格区域上方的表头行的顶部位置。
-
-    Args:
-        page (Page): PDF页面对象。
-        tables_top (T_num): 表格区域的上边界。
-    Returns:
-        T_num | None: 返回表头行的顶部位置。如果未找到表头行，则返回None。
-    """
-
-    # 表头特征：以"# Part Type"或"Part"开头的行
-    pattern = re.compile(r'^(# Part Type|Part)', re.IGNORECASE)
-
-    # 获取表格区域上方的符合表头特征的文本行
-    matching_lines = []
-    for line in page.extract_text_lines():
-        if line['top'] < tables_top and pattern.search(line['text']):
-            matching_lines.append(line)
-
-    if not matching_lines:
-        return None
-
-    # 表头行应是符合要求的行中，最接近表格区域上边界的行
-    header_top = max(line['top'] for line in matching_lines)
-
-    # 返回该行的顶部位置
-    return header_top
+    except Exception as e:
+        logger.error(f"Error extracting tables: {e}")
+        return []
 
 
 def extract_dict_from_lines_by_font(page: Page, lines: T_obj_list) -> dict:

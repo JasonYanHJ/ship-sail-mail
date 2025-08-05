@@ -218,7 +218,7 @@ class EmailSyncService:
                     # 将数据保存在附件的extra字段中
                     attachment_model.extra = {
                         'type': 'ShipServ',
-                        'version': 1,
+                        'version': 2,
                         'table_data': result['table_data'],
                         'section_data': result['section_data'],
                         'meta_data': result['meta_data'],
