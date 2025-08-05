@@ -169,7 +169,7 @@ def extract_table_data(pdf: PDF) -> list[list[list[str]]]:
                 firtst_cell = table[0][0]
 
                 # 新的section
-                if firtst_cell.startswith('Equipment Section Name'):
+                if firtst_cell.startswith('Equipment Section'):
                     # 将之前的表添加到返回结果中
                     if section_result:
                         results.append(section_result)
