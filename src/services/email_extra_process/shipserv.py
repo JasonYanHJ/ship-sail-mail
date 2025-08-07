@@ -186,9 +186,9 @@ def extract_table_data(pdf: PDF) -> list[list[list[str]]]:
                 else:
                     logger.warn(f"Unrecognized table type.")
 
-            # 将最后一张表添加到返回结果中
-            if section_result:
-                results.append(section_result)
+        # 将最后一张表添加到返回结果中
+        if section_result:
+            results.append(section_result)
 
         return results
 
